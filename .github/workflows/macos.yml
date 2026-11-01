@@ -27,6 +27,16 @@ jobs:
         run: bash scripts/build-community.sh
       - name: Verify developer signature
         run: codesign --verify --deep --strict "build/ClipBoardLine Dev.app"
+      - name: Package the developer application as a disk image
+        run: hdiutil create -volname "ClipBoardLine Dev" -srcfolder "build/ClipBoardLine Dev.app" -ov -format UDZO "build/ClipBoardLine-Dev.dmg"
+      - name: Offer the disk image for download
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ClipBoardLine-Dev-${{ github.sha }}
+          path: build/ClipBoardLine-Dev.dmg
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
       - name: Preserve exact-source Mac parity observations
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
