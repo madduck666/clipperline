@@ -27,13 +27,19 @@ jobs:
         run: bash scripts/build-community.sh
       - name: Verify developer signature
         run: codesign --verify --deep --strict "build/ClipBoardLine Dev.app"
-      - name: Package the developer application as a disk image
-        run: hdiutil create -volname "ClipBoardLine Dev" -srcfolder "build/ClipBoardLine Dev.app" -ov -format UDZO "build/ClipBoardLine-Dev.dmg"
+      - name: Package the developer application as a disk image and archive
+        run: |
+          hdiutil create -volname "ClipBoardLine Dev" -srcfolder "build/ClipBoardLine Dev.app" -ov -format UDZO "build/ClipBoardLine-Dev.dmg"
+          ditto -c -k --keepParent "build/ClipBoardLine Dev.app" "build/ClipBoardLine-Dev.zip"
+          printf '%s\n' "$GITHUB_SHA" > build/ClipBoardLine-Dev-build.txt
       - name: Offer the disk image for download
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ClipBoardLine-Dev-${{ github.sha }}
-          path: build/ClipBoardLine-Dev.dmg
+          path: |
+            build/ClipBoardLine-Dev.dmg
+            build/ClipBoardLine-Dev.zip
+            build/ClipBoardLine-Dev-build.txt
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -45,3 +51,26 @@ jobs:
           path: validation/parity/macos.json
           if-no-files-found: error
           retention-days: 14
+  # The keyless developer build of the latest tested main, at a fixed public
+  # address for scripts/mac-dev-update.sh. A pre-release, never the Latest
+  # release, so it cannot shadow an official signed release.
+  publish-dev-build:
+    needs: test-and-community-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ClipBoardLine-Dev-${{ github.sha }}
+          path: dev
+      - name: Replace the rolling dev-latest pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete dev-latest --cleanup-tag --yes 2>/dev/null || true
+          gh release create dev-latest dev/ClipBoardLine-Dev.zip dev/ClipBoardLine-Dev.dmg dev/ClipBoardLine-Dev-build.txt \
+            --target "$GITHUB_SHA" --prerelease --latest=false --title "ClipBoardLine Dev (latest main)" \
+            --notes "Keyless developer build of $GITHUB_SHA after the macOS tests passed. Install and update it with scripts/mac-dev-update.sh."
