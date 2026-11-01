@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 #if !STANDALONE_TESTS
 import XCTest
 @testable import Tendedero
