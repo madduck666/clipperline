@@ -13,7 +13,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/madduck666/clipperline/main/scripts/mac-dev-update.sh | bash
 # Later updates run from the app: Settings → Updates. The app bundles this
 # script and runs "prepare", then "swap --wait-pid <its pid>" as it quits.
-set -euo pipefail
+set -Eeuo pipefail
+# Never stop silently: name the step that failed.
+trap 'printf "\nHATA: Beklenmeyen bir sorun oldu (adım: %s, satır %s). Bu mesajın ekran görüntüsünü gönder.\n" "$BASH_COMMAND" "$LINENO" >&2' ERR
 
 REPO="${CLIPBOARDLINE_DEV_REPOSITORY:-madduck666/clipperline}"
 BASE="https://github.com/$REPO/releases/download/dev-latest"
@@ -27,12 +29,19 @@ IDENTITY="ClipBoardLine Dev Local Signing"
 say() { printf '\n==> %s\n' "$*" >&2; }
 fail() { printf '\nHATA: %s\n' "$*" >&2; exit 1; }
 
+has_identity() {
+  local identities
+  identities="$(security find-identity -v -p codesigning "$KEYCHAIN" 2>/dev/null || true)"
+  [[ "$identities" == *"\"$IDENTITY\""* ]]
+}
+
 # A private keychain with a random password keeps signing free of keychain
 # prompts. It holds only the local signing key.
 ensure_identity() {
   local password_file="$SUPPORT/keychain-password"
   if [ ! -f "$password_file" ]; then
-    LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 >"$password_file"
+    # openssl rand, not tr | head: head closing the pipe fails it under pipefail.
+    /usr/bin/openssl rand -hex 16 >"$password_file"
     chmod 600 "$password_file"
   fi
   local password
@@ -54,7 +63,7 @@ ensure_identity() {
   if [ "$found" = false ]; then
     security list-keychains -d user -s "${existing[@]}" "$KEYCHAIN"
   fi
-  if security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "\"$IDENTITY\""; then
+  if has_identity; then
     return
   fi
   say "Bu Mac'e özel imza oluşturuluyor (yalnızca ilk seferde)"
@@ -75,7 +84,7 @@ EOF
   /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -sha256 \
     -config "$work/cert.cnf" -keyout "$work/key.pem" -out "$work/cert.pem" >/dev/null 2>&1
   local p12pass
-  p12pass="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)"
+  p12pass="$(/usr/bin/openssl rand -hex 12)"
   /usr/bin/openssl pkcs12 -export -inkey "$work/key.pem" -in "$work/cert.pem" \
     -name "$IDENTITY" -passout "pass:$p12pass" -out "$work/identity.p12" >/dev/null 2>&1
   security import "$work/identity.p12" -k "$KEYCHAIN" -P "$p12pass" -T /usr/bin/codesign >/dev/null
@@ -83,8 +92,7 @@ EOF
   say "macOS şimdi bir kez Mac şifreni isteyecek: imzaya güvenmek için şifreni gir"
   security add-trusted-cert -p codeSign -k "$KEYCHAIN" "$work/cert.pem"
   rm -rf "$work"
-  security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "\"$IDENTITY\"" \
-    || fail "Yerel imza oluşturulamadı."
+  has_identity || fail "Yerel imza oluşturulamadı."
 }
 
 sign_app() {
