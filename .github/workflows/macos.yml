@@ -32,9 +32,14 @@ jobs:
         run: codesign --verify --deep --strict "build/ClipBoardLine Dev.app"
       - name: Package the developer application as a disk image and archive
         run: |
-          hdiutil create -volname "ClipBoardLine Dev" -srcfolder "build/ClipBoardLine Dev.app" -ov -format UDZO "build/ClipBoardLine-Dev.dmg"
           ditto -c -k --keepParent "build/ClipBoardLine Dev.app" "build/ClipBoardLine-Dev.zip"
           printf '%s\n' "$GITHUB_SHA" > build/ClipBoardLine-Dev-build.txt
+          # hdiutil on hosted runners intermittently reports "Resource busy".
+          for attempt in 1 2 3 4 5; do
+            if hdiutil create -volname "ClipBoardLine Dev" -srcfolder "build/ClipBoardLine Dev.app" -ov -format UDZO "build/ClipBoardLine-Dev.dmg"; then break; fi
+            [ "$attempt" = 5 ] && exit 1
+            sleep $((attempt * 5))
+          done
       - name: Offer the disk image for download
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
