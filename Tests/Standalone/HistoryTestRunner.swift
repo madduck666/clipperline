@@ -213,6 +213,7 @@ enum HistoryTestRunner {
             ("testReducedMotionIsImmediateAndPresentationDoesNotClaimKeyboardOwnership", shelfPresentation.testReducedMotionIsImmediateAndPresentationDoesNotClaimKeyboardOwnership),
             ("testOnlyTheMenuBarIconOpensTheLineFromAPointer", shelfPresentation.testOnlyTheMenuBarIconOpensTheLineFromAPointer),
             ("testShelfBackdropLetsClicksReachTheDesktopWhileCardsStillTakeThem", shelfPresentation.testShelfBackdropLetsClicksReachTheDesktopWhileCardsStillTakeThem),
+            ("testShelfBackdropDarknessIsAdjustableAndRemembered", shelfPresentation.testShelfBackdropDarknessIsAdjustableAndRemembered),
             ("testSharedTextIdentitiesAgainstLibraryAndLegacyHistory", textIdentityParity.testSharedTextIdentitiesAgainstLibraryAndLegacyHistory),
             ("testRepeatedThreeShelfOpenCloseLeavesInactiveRowsQuietAndRestoresSingleSelection", shelfPerformance.testRepeatedThreeShelfOpenCloseLeavesInactiveRowsQuietAndRestoresSingleSelection),
             ("testClosingActiveSearchClearsItBeforeFreshOpenChoosesImages", shelfPerformance.testClosingActiveSearchClearsItBeforeFreshOpenChoosesImages),

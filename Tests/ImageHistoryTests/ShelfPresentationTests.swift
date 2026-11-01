@@ -182,4 +182,21 @@ import XCTest
             XCTAssertFalse(line.acceptsPointer(at: point), "The shelf backdrop must not catch clicks at \(point)")
         }
     }
+
+    func testShelfBackdropDarknessIsAdjustableAndRemembered() throws {
+        let f = try SyntheticFixture(); defer { f.cleanup() }
+        let line = Line(defaults: f.defaults, inbox: f.inbox, now: { f.date }, breeze: false)
+        XCTAssertEqual(line.backdropDarkness, ShelfBackdrop.defaultDarkness, accuracy: 0.0001,
+            "A fresh install starts at the default darkness")
+        line.setBackdropDarkness(0.72)
+        let reopened = Line(defaults: f.defaults, inbox: f.inbox, now: { f.date }, breeze: false)
+        XCTAssertEqual(reopened.backdropDarkness, 0.72, accuracy: 0.0001, "The chosen darkness survives a relaunch")
+        line.setBackdropDarkness(5)
+        XCTAssertEqual(line.backdropDarkness, ShelfBackdrop.maximumDarkness, accuracy: 0.0001,
+            "The band never becomes an opaque wall")
+        line.setBackdropDarkness(-1)
+        XCTAssertEqual(line.backdropDarkness, 0, accuracy: 0.0001, "Zero turns the band off")
+        line.setBackdropDarkness(.nan)
+        XCTAssertEqual(line.backdropDarkness, ShelfBackdrop.defaultDarkness, accuracy: 0.0001)
+    }
 }

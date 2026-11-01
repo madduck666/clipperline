@@ -232,6 +232,18 @@ private struct SettingsView: View {
                     Text(L("Medium")).tag(Layout.Size.medium)
                     Text(L("Large")).tag(Layout.Size.large)
                 }
+                LabeledContent(L("Backdrop darkness")) {
+                    HStack {
+                        // Bound to the line directly: a drag updates often, and the shared
+                        // settings refresh also queries permissions and login state.
+                        Slider(value: Binding(get: { line.backdropDarkness }, set: { line.setBackdropDarkness($0) }),
+                               in: 0...ShelfBackdrop.maximumDarkness)
+                            .frame(minWidth: 140, maxWidth: 200)
+                            .accessibilityLabel(L("Backdrop darkness"))
+                        Text("\(Int((line.backdropDarkness * 100).rounded()))%")
+                            .monospacedDigit().foregroundStyle(.secondary).frame(width: 38, alignment: .trailing)
+                    }
+                }
             }
             Section {
                 Button(L("Open library"), action: model.openLibrary).disabled(line.library == nil)

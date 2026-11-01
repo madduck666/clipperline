@@ -69,6 +69,12 @@ final class Line: ObservableObject {
     @Published private(set) var size: Layout.Size = .medium
     @Published private(set) var theme: ShelfTheme = .soft
     func setTheme(_ value: ShelfTheme) { theme = value; defaults.set(value.rawValue, forKey: "shelfTheme") }
+    /// How dark the band behind each shelf row is, from Settings.
+    @Published private(set) var backdropDarkness = ShelfBackdrop.defaultDarkness
+    func setBackdropDarkness(_ value: Double) {
+        backdropDarkness = ShelfBackdrop.clamp(value)
+        defaults.set(backdropDarkness, forKey: "shelfBackdropDarkness")
+    }
     func setSize(_ value: Layout.Size) {
         size = value; Layout.size = value
         defaults.set(value.rawValue, forKey: "lineSize")
@@ -865,6 +871,7 @@ final class Line: ObservableObject {
         self.defaults = defaults
         keyboardBindings = KeyboardBindings(defaults: defaults)
         theme = ShelfTheme(rawValue: defaults.string(forKey: "shelfTheme") ?? "") ?? .soft
+        backdropDarkness = ShelfBackdrop.clamp(defaults.object(forKey: "shelfBackdropDarkness") as? Double ?? ShelfBackdrop.defaultDarkness)
         let savedSize = Layout.Size(rawValue: defaults.string(forKey: "lineSize") ?? "") ?? .medium
         size = savedSize
         Layout.size = savedSize

@@ -16,7 +16,7 @@ struct LineView: View {
             VStack(spacing: 0) {
                 ForEach(line.presentation.shelves, id: \.self) { shelf in
                     ZStack(alignment: .topLeading) {
-                        ShelfBackdrop().frame(width: width, height: Layout.panelHeight)
+                        ShelfBackdrop(darkness: line.backdropDarkness).frame(width: width, height: Layout.panelHeight)
                         Rope(width: width)
                         if shelf == .texts { TextShelfView(line: line, texts: texts, width: width) }
                         else if shelf == .links { LinkShelfView(line: line, links: links, width: width) }
@@ -143,15 +143,24 @@ private struct ShelfNotice: View {
 /// down with the line and nothing while it rests over moving content.
 struct ShelfBackdrop: View {
     static let cornerRadius: CGFloat = 18
-    static let topTint = 0.40, bottomTint = 0.30
+    /// How dark the top of the band is, chosen in Settings. The bottom is a
+    /// quarter lighter. Zero leaves the desktop untouched.
+    static let defaultDarkness = 0.5
+    static let maximumDarkness = 0.9
+    static func clamp(_ value: Double) -> Double {
+        value.isFinite ? min(maximumDarkness, max(0, value)) : defaultDarkness
+    }
+    let darkness: Double
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-        shape.fill(LinearGradient(colors: [Color.black.opacity(Self.topTint), Color.black.opacity(Self.bottomTint)],
-                                  startPoint: .top, endPoint: .bottom))
-            .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
-            .padding(.horizontal, 6).padding(.top, 2).padding(.bottom, 4)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        if darkness > 0 {
+            let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+            shape.fill(LinearGradient(colors: [Color.black.opacity(darkness), Color.black.opacity(darkness * 0.75)],
+                                      startPoint: .top, endPoint: .bottom))
+                .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                .padding(.horizontal, 6).padding(.top, 2).padding(.bottom, 4)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 }
 
