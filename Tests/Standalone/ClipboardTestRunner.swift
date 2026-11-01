@@ -58,6 +58,7 @@ enum ClipboardTestRunner {
             ("enable skips old image", tests.testEnablingSkipsExistingImage),
             ("PNG unchanged and captured once", tests.testPNGIsSavedOnceAndClipboardRemainsUnchanged),
             ("TIFF converts to PNG", tests.testTIFFConvertsToPNGWithoutChangingClipboard),
+            ("restored clipboard image not hung again", tests.testRestoredClipboardImageAlreadyHungIsNotHungAgain),
             ("multiple representations captured once", tests.testMultipleRepresentationsAndItemsProduceOneCapture),
             ("own copies skipped", tests.testOwnCopyIsSkippedAndNextExternalImageIsAccepted),
             ("privacy markers on every item", tests.testPrivateMarkersOnAnyItemPreventAllImageReads),

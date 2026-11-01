@@ -610,6 +610,7 @@ enum HistoryTestRunner {
             ("testPanelHeightKeepsBothRowsInsideVisibleScreen", dual.testPanelHeightKeepsBothRowsInsideVisibleScreen),
 
             ("testDefaultAndInvalidRetention", tests.testDefaultAndInvalidRetention),
+            ("testLineRecognizesAPictureItAlreadyHoldsByItsPixels", tests.testLineRecognizesAPictureItAlreadyHoldsByItsPixels),
             ("testEveryRetentionChoicePersists", tests.testEveryRetentionChoicePersists),
             ("testNewestFirstAndDuplicatesDoNotRenew", tests.testNewestFirstAndDuplicatesDoNotRenew),
             ("testRestartPreservesOrderAndDates", tests.testRestartPreservesOrderAndDates),

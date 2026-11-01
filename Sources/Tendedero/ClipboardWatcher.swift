@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -31,6 +32,10 @@ final class ClipboardWatcher {
     private let source: any ClipboardSource
     private let folder: URL
     private let onImage: (URL) -> Void
+    /// Whether this picture already hangs on the line. Dictation and paste
+    /// helpers put text on the clipboard, paste it, then restore what was
+    /// there before: the same image, under a new change count.
+    var isAlreadyHung: (ImageFingerprint) -> Bool = { _ in false }
     private var timer: Timer?
     private var lastCount: Int?
     static var ownChangeCount = -1
@@ -102,6 +107,9 @@ final class ClipboardWatcher {
                 guard let data, let png = Self.validatedPNG(data, type: type) else { continue }
                 // Another application can replace the clipboard while we read it.
                 guard source.changeCount == count else { return }
+                // A restored clipboard is not a new copy. Same pixels as a
+                // picture already on the line: leave the line as it is.
+                if let fingerprint = ImageFingerprint(data: png), isAlreadyHung(fingerprint) { return }
                 save(png)
                 return // A clipboard screenshot is one image, even with multiple representations.
             }
@@ -153,5 +161,51 @@ final class ClipboardWatcher {
             // Avoid logging image bytes, names, paths or clipboard metadata.
             log.error("Could not save a clipboard image")
         }
+    }
+}
+
+/// The pixels of a picture, independent of its file format or metadata: a
+/// PNG and a TIFF of the same image match. Cheap size checks come first, so
+/// only same-sized pictures are ever decoded.
+struct ImageFingerprint: Equatable {
+    let width: Int
+    let height: Int
+    let digest: Data
+}
+
+extension ImageFingerprint {
+    init?(data: Data) {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        self.init(source: source)
+    }
+
+    init?(url: URL) {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        self.init(source: source)
+    }
+
+    private init?(source: CGImageSource) {
+        guard let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary),
+              image.width > 0, image.height > 0, image.width <= ClipboardWatcher.maximumPixelCount / image.height else { return nil }
+        let bytesPerRow = image.width * 4
+        var pixels = Data(count: bytesPerRow * image.height)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: image.width, height: image.height,
+                bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            return true
+        }
+        guard drawn else { return nil }
+        self.init(width: image.width, height: image.height, digest: Data(SHA256.hash(data: pixels)))
+    }
+
+    /// Pixel size from the file header, without decoding the picture.
+    static func pixelSize(of url: URL) -> (width: Int, height: Int)? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue else { return nil }
+        return (width, height)
     }
 }

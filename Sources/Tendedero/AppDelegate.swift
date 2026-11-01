@@ -69,8 +69,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var folderWatchers: [ScreenshotWatcher] = []
     private lazy var clipboardWatcher: ClipboardWatcher = {
         let callback: (URL) -> Void = { [weak self] in self?.hangCapture($0) }
-        if let clipboardSource { return ClipboardWatcher(source: clipboardSource, folder: line.historyFiles.inbox, onImage: callback) }
-        return ClipboardWatcher(onImage: callback)
+        let watcher = clipboardSource.map { ClipboardWatcher(source: $0, folder: line.historyFiles.inbox, onImage: callback) }
+            ?? ClipboardWatcher(onImage: callback)
+        watcher.isAlreadyHung = { [weak self] in self?.line.hasImage(matching: $0) ?? false }
+        return watcher
     }()
     private var signalSources: [DispatchSourceSignal] = []
     private var hotKey: HotKey?

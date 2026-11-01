@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import UniformTypeIdentifiers
 #if !STANDALONE_TESTS
 import XCTest
 @testable import Tendedero
@@ -345,4 +346,24 @@ final class ImageHistoryTests: HistoryTestCase {
         }
     }
 
+    @MainActor
+    func testLineRecognizesAPictureItAlreadyHoldsByItsPixels() throws {
+        let f = try SyntheticFixture(); defer { f.cleanup() }
+        let line = f.line()
+        let url = try f.image()
+        XCTAssertNotNil(line.hang(url, quietly: true))
+        let same = try XCTUnwrap(ImageFingerprint(url: url))
+        XCTAssertTrue(line.hasImage(matching: same), "The same pixels are already on the line")
+        // The same picture re-encoded as TIFF, as a clipboard restore may write it.
+        let image = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) })
+        let tiff = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(tiff, UTType.tiff.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        XCTAssertTrue(line.hasImage(matching: try XCTUnwrap(ImageFingerprint(data: tiff as Data))))
+        let other = ImageFingerprint(width: same.width, height: same.height, digest: Data(repeating: 0, count: 32))
+        XCTAssertFalse(line.hasImage(matching: other), "Different pixels of the same size are a new picture")
+        let larger = ImageFingerprint(width: same.width + 1, height: same.height, digest: same.digest)
+        XCTAssertFalse(line.hasImage(matching: larger))
+    }
 }

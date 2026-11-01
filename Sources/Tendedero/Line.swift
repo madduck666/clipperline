@@ -747,6 +747,28 @@ final class Line: ObservableObject {
     var maximumScrollOffset: CGFloat { Layout.maximumOffset(count: displayItems.count, width: viewportWidth) }
     var visibleRange: Range<Int> { Layout.visibleRange(count: displayItems.count, width: viewportWidth, offset: scrollOffset) }
 
+    /// Fingerprints of the pictures on the line, by file and modification
+    /// date, so a check decodes each same-sized picture once.
+    private var fingerprints: [String: (modified: Date?, value: ImageFingerprint)] = [:]
+
+    /// Whether a picture with these pixels already hangs on the image shelf.
+    func hasImage(matching fingerprint: ImageFingerprint) -> Bool {
+        for item in items where !item.falling && !isRecordingFile(item.url) {
+            guard let size = ImageFingerprint.pixelSize(of: item.url),
+                  size.width == fingerprint.width, size.height == fingerprint.height else { continue }
+            let path = item.url.standardizedFileURL.path
+            let modified = (try? item.url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            let value: ImageFingerprint?
+            if let cached = fingerprints[path], cached.modified == modified { value = cached.value }
+            else {
+                value = ImageFingerprint(url: item.url)
+                if let value { fingerprints[path] = (modified, value) }
+            }
+            if value == fingerprint { return true }
+        }
+        return false
+    }
+
     /// Whether the line takes the pointer at a top-origin panel point: over a
     /// card or a control, or along a row longer than the screen, gaps
     /// included, so a swipe anywhere along it moves it. Everywhere else,

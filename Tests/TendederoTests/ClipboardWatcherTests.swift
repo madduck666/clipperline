@@ -66,6 +66,31 @@ final class ClipboardWatcherTests: ClipboardTestCase {
     }
 
     @MainActor
+    func testRestoredClipboardImageAlreadyHungIsNotHungAgain() throws {
+        try withWatcher { watcher, source, _, received in
+            // The line's own check: the pixels of every picture it holds.
+            watcher.isAlreadyHung = { fingerprint in received().contains { ImageFingerprint(url: $0) == fingerprint } }
+            watcher.start()
+            source.copy([.png: try imageData(.png)])
+            watcher.check()
+            XCTAssertEqual(received().count, 1)
+            // Dictation pastes its text, then restores the previous image,
+            // here as TIFF: a new change count with the same pixels.
+            source.copy([.string: Data("dictated words".utf8)])
+            watcher.check()
+            source.copy([.tiff: try imageData(.tiff)])
+            watcher.check()
+            source.copy([.png: try imageData(.png)])
+            watcher.check()
+            XCTAssertEqual(received().count, 1, "A restored clipboard must not hang the same picture again")
+            let other: [UInt8] = [0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255]
+            source.copy([.png: try imageData(.png, pixels: other)])
+            watcher.check()
+            XCTAssertEqual(received().count, 2, "A different picture still hangs")
+        }
+    }
+
+    @MainActor
     func testTIFFConvertsToPNGWithoutChangingClipboard() throws {
         try withWatcher { watcher, source, _, received in
             watcher.start()
@@ -279,8 +304,8 @@ final class ClipboardWatcherTests: ClipboardTestCase {
         return Data(bytes)
     }
 
-    private func imageData(_ type: UTType) throws -> Data {
-        let pixels: [UInt8] = [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]
+    private func imageData(_ type: UTType,
+                           pixels: [UInt8] = [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]) throws -> Data {
         let provider = try XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData))
         let image = try XCTUnwrap(CGImage(width: 2, height: 2, bitsPerComponent: 8, bitsPerPixel: 32,
             bytesPerRow: 8, space: CGColorSpaceCreateDeviceRGB(),
