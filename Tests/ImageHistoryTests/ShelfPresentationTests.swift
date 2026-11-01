@@ -165,6 +165,9 @@ import XCTest
         panel.contentHeight = line.panelHeight
         panel.setFrame(NSRect(x: -10000, y: -10000, width: width, height: line.panelHeight), display: false)
         defer { line.revealed = false; panel.contentView = nil }
+        // An unordered offscreen panel never runs onAppear; give the line the
+        // screen width it gets when shown, so the swipe band is measured too.
+        line.setViewportWidth(width)
         let deadline = Date().addingTimeInterval(5)
         while (line.hitRects[first.id] == nil || line.hitRects[second.id] == nil) && Date() < deadline {
             host.layoutSubtreeIfNeeded(); RunLoop.current.run(until: Date().addingTimeInterval(0.01))
