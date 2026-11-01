@@ -121,4 +121,25 @@ import XCTest
         XCTAssertTrue(AppDelegate.replaceOtherInstances(bundleIdentifier: "org.clipboardline.tests.\(UUID().uuidString)", timeout: 0.1),
             "With no other copy of the app running, the launch carries on")
     }
+
+    func testARenamedDeveloperBuildMovesOutOfItsOldFolderOnceAndKeepsAnyExistingApp() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let legacy = folder.appendingPathComponent(AppDelegate.legacyDeveloperBundleName)
+        try FileManager.default.createDirectory(at: legacy.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        var opened: [URL] = []
+        XCTAssertTrue(AppDelegate.moveToCurrentName(bundle: legacy, name: "Clipperline", open: { opened.append($0) }))
+        let renamed = folder.appendingPathComponent("Clipperline.app")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: renamed.appendingPathComponent("Contents").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path))
+        XCTAssertEqual(opened, [renamed], "The app reopens from its new name")
+        // Already renamed: nothing moves or reopens.
+        XCTAssertFalse(AppDelegate.moveToCurrentName(bundle: renamed, name: "Clipperline", open: { opened.append($0) }))
+        // A Clipperline already in place is never replaced by an older folder.
+        try FileManager.default.createDirectory(at: legacy, withIntermediateDirectories: true)
+        XCTAssertFalse(AppDelegate.moveToCurrentName(bundle: legacy, name: "Clipperline", open: { opened.append($0) }))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacy.path))
+        XCTAssertFalse(AppDelegate.moveToCurrentName(bundle: legacy, name: "ClipBoardLine Dev", open: { opened.append($0) }))
+        XCTAssertEqual(opened.count, 1)
+    }
 }

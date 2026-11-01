@@ -8,7 +8,7 @@ case "$CONFIG" in debug|release) ;; *) echo "Usage: bash scripts/build-community
 case "${CLIPBOARDLINE_BUNDLE_MODELS:-0}" in 0|1) ;; *) echo "CLIPBOARDLINE_BUNDLE_MODELS must be 0 or 1" >&2; exit 2 ;; esac
 test -f Sources/Tendedero/main.swift || { echo "Run from a complete ClipBoardLine source checkout" >&2; exit 1; }
 OUT="$ROOT/.build/community"
-APP="$ROOT/build/ClipBoardLine Dev.app"
+APP="$ROOT/build/Clipperline.app"
 FRAMEWORK="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 mkdir -p "$OUT/Sources" "$OUT/ModuleCache" "$ROOT/build"
 if [ -L "$APP" ] || [ -L "$OUT/Sources" ]; then
@@ -62,7 +62,7 @@ if info.get('CFBundleIdentifier') != 'org.clipboardline.community':
     raise SystemExit('Refusing to replace a different application')
 PY
 fi
-STAGE="$OUT/ClipBoardLine Dev.app"
+STAGE="$OUT/Clipperline.app"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources" "$STAGE/Contents/Frameworks"
 cp "$OUT/ClipBoardLine" "$STAGE/Contents/MacOS/ClipBoardLine"
@@ -94,7 +94,7 @@ for folder in sorted((root / 'Sources/Tendedero/Resources').glob('*.lproj')):
     destination.mkdir()
     (destination / 'Localizable.strings').write_text((folder / 'Localizable.strings').read_text().replace('Tendedero', 'ClipBoardLine'))
 info = {
-    'CFBundleName': 'ClipBoardLine Dev', 'CFBundleDisplayName': 'ClipBoardLine Dev',
+    'CFBundleName': 'Clipperline', 'CFBundleDisplayName': 'Clipperline',
     'CFBundleIdentifier': 'org.clipboardline.community', 'CFBundleExecutable': 'ClipBoardLine',
     'CFBundleIconFile': 'ClipBoardLine', 'CFBundlePackageType': 'APPL',
     'CFBundleShortVersionString': '0.0.0', 'CFBundleVersion': '1',
@@ -103,9 +103,9 @@ info = {
     'SUEnableAutomaticChecks': False, 'SUAutomaticallyUpdate': False, 'SUAllowsAutomaticUpdates': False,
     'UTExportedTypeDeclarations': [{'UTTypeIdentifier': 'local.clipboardline.library-id',
         'UTTypeConformsTo': ['public.data'], 'UTTypeDescription': 'Library item identifier'}],
-    'NSDesktopFolderUsageDescription': 'ClipBoardLine Dev watches the screenshot folder you choose.',
-    'NSDocumentsFolderUsageDescription': 'ClipBoardLine Dev watches only image folders you choose.',
-    'NSDownloadsFolderUsageDescription': 'ClipBoardLine Dev watches only image folders you choose.'
+    'NSDesktopFolderUsageDescription': 'Clipperline watches the screenshot folder you choose.',
+    'NSDocumentsFolderUsageDescription': 'Clipperline watches only image folders you choose.',
+    'NSDownloadsFolderUsageDescription': 'Clipperline watches only image folders you choose.'
 }
 # A CI build records its commit and fork so the developer updater can tell
 # whether dev-latest is newer. Local builds leave both out and do not update.

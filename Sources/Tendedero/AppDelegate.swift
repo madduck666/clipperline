@@ -196,10 +196,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return others.allSatisfy(\.isTerminated)
     }
 
+    /// The developer build was renamed from ClipBoardLine Dev. An update made
+    /// by an updater from before the rename still lands under the old folder
+    /// name, so the app moves itself to its current name once and reopens
+    /// from there. Data, settings and permissions follow the bundle
+    /// identifier, not the folder. On any failure it keeps running in place.
+    static let legacyDeveloperBundleName = "ClipBoardLine Dev.app"
+    static func moveToCurrentName(bundle: URL, name: String, open: (URL) -> Void) -> Bool {
+        guard bundle.lastPathComponent == legacyDeveloperBundleName, name != "ClipBoardLine Dev", !name.isEmpty,
+              !name.contains("/") else { return false }
+        let target = bundle.deletingLastPathComponent().appendingPathComponent(name + ".app")
+        guard !FileManager.default.fileExists(atPath: target.path) else { return false }
+        do { try FileManager.default.moveItem(at: bundle, to: target) } catch { return false }
+        open(target)
+        return true
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         if watchesFiles, !Self.replaceOtherInstances(bundleIdentifier: Bundle.main.bundleIdentifier) {
             NSApp.terminate(nil); return
         }
+        // The reopened copy replaces this one through replaceOtherInstances.
+        if watchesFiles, DevBuildUpdater.shared.isActive,
+           Self.moveToCurrentName(bundle: Bundle.main.bundleURL, name: AppIdentity.name, open: { target in
+               let configuration = NSWorkspace.OpenConfiguration()
+               configuration.createsNewApplicationInstance = true
+               NSWorkspace.shared.openApplication(at: target, configuration: configuration) { _, _ in }
+           }) { return }
         EditingMenu.install(onSettings: { [weak self] in self?.showSettings() })
         if startupError != nil { setUpStatusItem(); DispatchQueue.main.async { [weak self] in self?.showStartupFailure() }; return }
         let host = ShelfHostingView(rootView: LineView(line: line))

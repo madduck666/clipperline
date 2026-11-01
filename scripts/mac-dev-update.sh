@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs or updates "ClipBoardLine Dev" from this fork's dev-latest
+# Installs or updates "Clipperline" (formerly "ClipBoardLine Dev") from this fork's dev-latest
 # pre-release without a Gatekeeper prompt and without losing privacy
 # permissions on every update.
 #
@@ -19,8 +19,13 @@ trap 'printf "\nHATA: Beklenmeyen bir sorun oldu (adım: %s, satır %s). Bu mesa
 
 REPO="${CLIPBOARDLINE_DEV_REPOSITORY:-madduck666/clipperline}"
 BASE="https://github.com/$REPO/releases/download/dev-latest"
-APP_NAME="ClipBoardLine Dev"
+APP_NAME="Clipperline"
+# The name before the rename. Its folder is removed once Clipperline is in place.
+LEGACY_TARGET="/Applications/ClipBoardLine Dev.app"
 TARGET="/Applications/$APP_NAME.app"
+# The updater folder, keychain and signing identity keep their first names:
+# renaming them would make a new identity and macOS would ask for every
+# permission again.
 SUPPORT="$HOME/Library/Application Support/ClipBoardLine Dev Updater"
 STAGED="$SUPPORT/staged/$APP_NAME.app"
 KEYCHAIN="$HOME/Library/Keychains/clipboardline-dev-signing.keychain-db"
@@ -122,7 +127,7 @@ prepare() {
   local work
   work="$(mktemp -d)"
   say "Yeni sürüm indiriliyor (${latest:0:7})"
-  curl -fL --progress-bar "$BASE/ClipBoardLine-Dev.zip" -o "$work/app.zip"
+  curl -fL --progress-bar "$BASE/$APP_NAME.zip" -o "$work/app.zip"
   ditto -x -k "$work/app.zip" "$work"
   [ -d "$work/$APP_NAME.app" ] || fail "İndirilen dosyada uygulama bulunamadı."
   say "Uygulama bu Mac'in imzasıyla imzalanıyor"
@@ -152,10 +157,11 @@ swap() {
     if [ ! -e "$TARGET" ] || mv "$TARGET" "$TARGET.old"; then
       if mv "$TARGET.new" "$TARGET"; then
         rm -rf "$TARGET.old"
+        if [ -d "$LEGACY_TARGET" ] && [ "$LEGACY_TARGET" != "$TARGET" ]; then rm -rf "$LEGACY_TARGET"; fi
         cp "$SUPPORT/staged-build" "$SUPPORT/installed-build"
         rm -rf "$(dirname "$STAGED")"
         open "$TARGET"
-        say "Tamam. ClipBoardLine Dev güncellendi ve açıldı."
+        say "Tamam. Clipperline güncellendi ve açıldı."
         return
       fi
       mv "$TARGET.old" "$TARGET" 2>/dev/null || true
@@ -163,12 +169,12 @@ swap() {
   fi
   rm -rf "$TARGET.new"
   [ -d "$TARGET" ] && open "$TARGET"
-  fail "Uygulama değiştirilemedi. Sistem Ayarları → Gizlilik ve Güvenlik → Uygulama Yönetimi'nde ClipBoardLine Dev'e (Terminal'den kurduysan Terminal'e) izin verip tekrar dene."
+  fail "Uygulama değiştirilemedi. Sistem Ayarları → Gizlilik ve Güvenlik → Uygulama Yönetimi'nde Clipperline'a (Terminal'den kurduysan Terminal'e) izin verip tekrar dene."
 }
 
 # Any running copy, wherever it runs from: macOS starts an app opened after
 # "Open Anyway" from a hidden translocated path, not from Applications.
-RUNNING_PATTERN="/$APP_NAME.app/Contents/MacOS/"
+RUNNING_PATTERN="/(Clipperline|ClipBoardLine Dev)\.app/Contents/MacOS/"
 running() { pgrep -f "$RUNNING_PATTERN" >/dev/null 2>&1; }
 quit_running() {
   local attempt
@@ -201,20 +207,20 @@ main() {
       local latest installed
       latest="$(latest_build)" || fail "dev-latest sürümü indirilemedi. İnternet bağlantını kontrol et."
       installed="$(cat "$SUPPORT/installed-build" 2>/dev/null || true)"
-      if [ -n "$installed" ] && [ "$installed" = "$latest" ] && [ -d "$TARGET" ]; then
+      if [ -n "$installed" ] && [ "$installed" = "$latest" ] && [ -d "$TARGET" ] && [ ! -d "$LEGACY_TARGET" ]; then
         say "Zaten en son sürüm kurulu (${latest:0:7}). Yapılacak bir şey yok."
         return
       fi
       prepare >/dev/null
       if running; then
-        say "Çalışan ClipBoardLine Dev kapatılıyor"
+        say "Çalışan Clipperline kapatılıyor"
         quit_running
       fi
       swap
       if [ -z "$installed" ]; then
         echo "İlk kurulum: Mac izin isterse bir kez 'İzin Ver' de. Sonraki güncellemelerde izinler korunur."
       fi
-      echo "Sonraki güncellemeler: ClipBoardLine Dev → Ayarlar → Güncellemeler → Güncellemeleri kontrol et."
+      echo "Sonraki güncellemeler: Clipperline → Ayarlar → Güncellemeler → Güncellemeleri kontrol et."
       ;;
     *)
       fail "Bilinmeyen komut: $1"
