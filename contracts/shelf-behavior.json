@@ -26,6 +26,12 @@
         "macos": "Text drag advertises plain text and per-item .txt files together; links offer .webloc copies.",
         "windows": "Shelf text drag inserts text and shelf image drag exports files. Library card drag adds selected items to folders; Alt-drag exports native file copies (.txt/.url for text/links).",
         "reason": "Electron native startDrag exposes files without a simultaneous Unicode-text payload. The explicit Alt gesture preserves direct text insertion and offers both outcomes; native link file types follow each operating system."
+      },
+      {
+        "id": "status-icon-pointer-reveal",
+        "macos": "Resting the pointer on the ClipBoardLine menu bar icon for 0.25 s opens the shelves (Settings: When the pointer rests on the menu bar icon). The rest of the menu bar, other menus and other icons never open them.",
+        "windows": "The notification-area icon opens the shelves with a click; resting the pointer on it does not.",
+        "reason": "The macOS menu bar icon is always visible and pointer dwell on it is the established Mac reveal, now limited to the icon so passing through the menu bar does not open the shelves. Windows notification-area icons are often collapsed into the overflow flyout and report no pointer leave, so a hover reveal there would be unreliable; the click and the shared global shortcut keep the same outcome."
       }
     ],
     "sharedBehaviors": [
@@ -94,6 +100,12 @@
         "behavior": "An item without a name is titled by its content: a text by its first line that is not blank, with surrounding spaces and tabs removed and at most 120 grapheme clusters (lines end at LF or CRLF) and the localized \"Untitled note\" when every line is blank, a link by its fetched page title or else its host name and the localized \"Link\" when the stored URL does not parse, so an indented snippet or a long copied URL reads the same on both platforms.",
         "macos": "LibraryRecord.displayTitle returns the first non-blank line, trimmed and capped at 120 characters (Characters are grapheme clusters), or L(\"Untitled note\") for an all-blank text, and the metadata title, the URL host or L(\"Link\") for a link; LibraryInteractionTests.testUnnamedItemTitlesAreTheTrimmedFirstLineAndLinkHostLikeWindows covers it.",
         "windows": "title() in renderer.js applies the same rule (t('Untitled note') and t('Link') as fallbacks) to cards, title sorting and best-match ranking; library-ui.test.cjs runs the unnamed item titles scenario."
+      },
+      {
+        "id": "shelf-backdrop",
+        "behavior": "While the shelves are shown, every visible shelf row draws a smoked translucent backdrop behind its rope and cards (black, 40% opacity at the top to 30% at the bottom, inset with rounded corners) so cards stand out from a busy desktop. The backdrop is display only: it never becomes a pointer target, so a click on it does exactly what a click on empty shelf space does on that platform and never selects, copies or pins an item.",
+        "macos": "LineView draws ShelfBackdrop beneath each row with hit testing off and no hit rectangle; Line.acceptsPointer keeps the panel ignoring the pointer there, so the click reaches the app or desktop underneath. ShelfPresentationTests.testShelfBackdropLetsClicksReachTheDesktopWhileCardsStillTakeThem mounts the real LineView and checks cards still take the pointer while backdrop points pass through.",
+        "windows": "shelfRow() in renderer.js renders an aria-hidden .shelf-backdrop first in each row with pointer-events: none; a click there reaches the same empty-space handler, which closes the shelves. renderer-ui.test.cjs runs the display-only backdrop scenario."
       }
     ]
   },

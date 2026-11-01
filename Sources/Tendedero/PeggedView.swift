@@ -91,15 +91,18 @@ struct PeggedView: View {
                 // Drawn here, clicked through GrabView, which sits on top. A
                 // cross sends a file in Tendedero's folder to the Trash; for a
                 // file anywhere else it only hides it from the line.
-                Image(systemName: item.managedCopy ? "xmark" : "eye.slash")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 20, height: 20)
-                    .glassFrame(circle: true)
-                    .padding(3)
-                    .opacity(hovering && !dragging ? 1 : 0)
-                    .scaleEffect(hovering ? 1 : 0.6)
-                    .allowsHitTesting(false)
+                // Built only while shown: a hidden glass badge still costs a
+                // live blur behind every card on the line.
+                if hovering && !dragging {
+                    Image(systemName: item.managedCopy ? "xmark" : "eye.slash")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 20, height: 20)
+                        .glassFrame(circle: true)
+                        .padding(3)
+                        .allowsHitTesting(false)
+                        .transition(.opacity.combined(with: .scale(scale: 0.6)))
+                }
             }
             .overlay {
                 RoundedRectangle(cornerRadius: Frame.radius).strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 3)
@@ -228,11 +231,15 @@ struct FavoriteBadge: View {
     let pinned: Bool
     let visible: Bool
     var body: some View {
-        Image(systemName: pinned ? "pin.fill" : "pin")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(pinned ? Color.accentColor : Color.primary)
-            .frame(width: 20, height: 20).glassFrame(circle: true).padding(3)
-            .opacity(visible ? 1 : 0).allowsHitTesting(false)
+        // Built only while shown, so a line of cards does not keep a hidden
+        // glass blur alive behind each one.
+        if visible {
+            Image(systemName: pinned ? "pin.fill" : "pin")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(pinned ? Color.accentColor : Color.primary)
+                .frame(width: 20, height: 20).glassFrame(circle: true).padding(3)
+                .allowsHitTesting(false).transition(.opacity)
+        }
     }
 }
 struct CopyBadge: View {

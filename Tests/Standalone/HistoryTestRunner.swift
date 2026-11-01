@@ -211,6 +211,8 @@ enum HistoryTestRunner {
             ("testImageCommandZKeepsMarkupUndoPriorityAndBackspaceUndoesLibraryTrash", libraryKeyboardWorkflowTests.testImageCommandZKeepsMarkupUndoPriorityAndBackspaceUndoesLibraryTrash),
             ("testExplicitSearchOrSidebarEntrySupersedesPendingNewNoteInspectorFocus", libraryFocusNativeTests.testExplicitSearchOrSidebarEntrySupersedesPendingNewNoteInspectorFocus),
             ("testReducedMotionIsImmediateAndPresentationDoesNotClaimKeyboardOwnership", shelfPresentation.testReducedMotionIsImmediateAndPresentationDoesNotClaimKeyboardOwnership),
+            ("testOnlyTheMenuBarIconOpensTheLineFromAPointer", shelfPresentation.testOnlyTheMenuBarIconOpensTheLineFromAPointer),
+            ("testShelfBackdropLetsClicksReachTheDesktopWhileCardsStillTakeThem", shelfPresentation.testShelfBackdropLetsClicksReachTheDesktopWhileCardsStillTakeThem),
             ("testSharedTextIdentitiesAgainstLibraryAndLegacyHistory", textIdentityParity.testSharedTextIdentitiesAgainstLibraryAndLegacyHistory),
             ("testRepeatedThreeShelfOpenCloseLeavesInactiveRowsQuietAndRestoresSingleSelection", shelfPerformance.testRepeatedThreeShelfOpenCloseLeavesInactiveRowsQuietAndRestoresSingleSelection),
             ("testClosingActiveSearchClearsItBeforeFreshOpenChoosesImages", shelfPerformance.testClosingActiveSearchClearsItBeforeFreshOpenChoosesImages),

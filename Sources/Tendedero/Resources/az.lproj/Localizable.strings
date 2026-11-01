@@ -212,7 +212,7 @@
 "Watch" = "İzlə";
 "Watch up to three folders for new images. Removing a folder leaves its files untouched." = "Watch up to three folders for new images. Removing a folder leaves its files untouched.";
 "When something new hangs" = "Yeni bir şey asılanda";
-"When the pointer rests in the menu bar" = "Göstərici menyu panelində dayananda";
+"When the pointer rests on the menu bar icon" = "Göstərici menyu panelindəki ikonun üzərində dayananda";
 "You can restore them from Library → Trash. Original files stay in place." = "You can restore them from Library → Trash. Original files stay in place.";
 
 // Standard text editing

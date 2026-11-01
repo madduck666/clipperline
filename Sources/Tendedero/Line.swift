@@ -741,6 +741,15 @@ final class Line: ObservableObject {
     var maximumScrollOffset: CGFloat { Layout.maximumOffset(count: displayItems.count, width: viewportWidth) }
     var visibleRange: Range<Int> { Layout.visibleRange(count: displayItems.count, width: viewportWidth, offset: scrollOffset) }
 
+    /// Whether the line takes the pointer at a top-origin panel point: over a
+    /// card or a control, or along a row longer than the screen, gaps
+    /// included, so a swipe anywhere along it moves it. Everywhere else,
+    /// the shelf backdrop included, clicks reach whatever is underneath.
+    func acceptsPointer(at point: CGPoint) -> Bool {
+        hitRects.values.contains { $0.insetBy(dx: -4, dy: -4).contains(point) }
+            || scrollableShelfBandContains(point)
+    }
+
     /// Top-origin panel coordinates. All configured rows, including mixed
     /// two-row layouts, accept a swipe in their gaps when that row overflows.
     /// Looking only at the image row made text/link gaps pass through instead.

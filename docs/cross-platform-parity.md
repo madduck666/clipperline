@@ -76,6 +76,14 @@ library only when the open view is that folder or one of its subfolders.
 line, trimmed and capped at 120 grapheme clusters (Untitled note when every line is
 blank), and a link without a fetched title by its host name (Link when the stored URL
 does not parse).
+`shelf-backdrop` requires every visible shelf row to draw a smoked translucent
+backdrop behind its rope and cards that is display only: a click on it does what a
+click on empty shelf space does (on macOS it reaches the app or desktop underneath,
+on Windows it closes the shelves) and never selects, copies or pins an item.
+
+The `status-icon-pointer-reveal` exception records that on macOS only resting the
+pointer on the ClipBoardLine menu bar icon opens the shelves, not the rest of the
+menu bar, while Windows opens them from a notification-area icon click.
 
 The adapters execute application behavior:
 

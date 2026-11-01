@@ -61,9 +61,11 @@ private struct TextCard: View {
                 .background(renderState.theme.wash(.texts), in: RoundedRectangle(cornerRadius: Frame.radius))
                 .overlay(RoundedRectangle(cornerRadius: Frame.radius).strokeBorder(texts.selectedIDs.contains(entry.id) ? Color.accentColor : .clear, lineWidth: 3))
                 .overlay(alignment: .topLeading) {
-                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
-                        .frame(width: 20, height: 20).glassFrame(circle: true).padding(3)
-                        .opacity(hovering && !dragging ? 1 : 0).allowsHitTesting(false)
+                    if hovering && !dragging {
+                        Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                            .frame(width: 20, height: 20).glassFrame(circle: true).padding(3)
+                            .allowsHitTesting(false).transition(.opacity)
+                    }
                 }
                 .overlay(alignment: .topTrailing) { FavoriteBadge(pinned: entry.pinned, visible: (hovering || texts.focusedID == entry.id) && !dragging) }
                 .overlay(TextGrabArea(entry: entry, line: line, texts: texts))

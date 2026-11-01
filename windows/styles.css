@@ -74,6 +74,9 @@ body.view-shelves, body.view-shelves #app, body.view-shelves .shell, .shelf-shel
 .size-large { --card-width: 202px; --photo-height: 140px; --text-height: 146px; --requested-photo-height: 140px; --requested-text-height: 146px; }
 .shelves { --photo-height: clamp(50px, calc(100vh / var(--rows, 3) - 98px), var(--requested-photo-height)); --text-height: clamp(58px, calc(100vh / var(--rows, 3) - 90px), var(--requested-text-height)); display: grid; grid-template-rows: repeat(var(--rows, 3), minmax(0, 1fr)); height: 100vh; flex: 1 1 100%; padding: 0; overflow: hidden; }
 .shelf { position: relative; min-width: 0; min-height: 0; padding: 0; overflow: hidden; --shelf-accent: var(--image); }
+/* A smoked glass band behind each row so cards stand out from a busy desktop.
+   Display only: it never takes the pointer, so it adds no click target. */
+.shelf-backdrop { position: absolute; z-index: 0; inset: 2px 6px 4px; border: .5px solid #ffffff14; border-radius: 18px; background: linear-gradient(180deg, #00000066, #0000004d); pointer-events: none; }
 .shelf[data-shelf="text"] { --shelf-accent: var(--text-color); }
 .shelf[data-shelf="link"] { --shelf-accent: var(--link); }
 .shelf-head { position: absolute; z-index: 4; inset: 3px 14px auto; display: flex; align-items: center; gap: 7px; height: 23px; pointer-events: none; }

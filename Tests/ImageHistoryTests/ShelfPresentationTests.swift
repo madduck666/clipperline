@@ -132,4 +132,50 @@ import XCTest
         XCTAssertTrue(panel.keyboardFocusAllowed, "The AppDelegate still owns focus release and return")
         XCTAssertEqual(panel.shelfModelOffset, -(panel.contentHeight + 12))
     }
+
+    func testOnlyTheMenuBarIconOpensTheLineFromAPointer() {
+        // A synthetic 1440x900 screen whose 24 point menu bar holds the icon.
+        let icon = NSRect(x: 1200, y: 876, width: 30, height: 24)
+        XCTAssertTrue(AppDelegate.pointerRestsOnStatusIcon(NSPoint(x: 1215, y: 888), icon: icon),
+            "Resting on the line's menu bar icon starts the reveal dwell")
+        XCTAssertTrue(AppDelegate.pointerRestsOnStatusIcon(NSPoint(x: 1215, y: 900), icon: icon),
+            "A pointer pushed against the top edge over the icon still counts")
+        for point in [NSPoint(x: 20, y: 888), NSPoint(x: 700, y: 899), NSPoint(x: 1185, y: 888),
+                      NSPoint(x: 1245, y: 888), NSPoint(x: 1215, y: 860)] {
+            XCTAssertFalse(AppDelegate.pointerRestsOnStatusIcon(point, icon: icon),
+                "Elsewhere in or below the menu bar the line stays where it is: \(point)")
+        }
+        XCTAssertFalse(AppDelegate.pointerRestsOnStatusIcon(NSPoint(x: 1215, y: 888), icon: nil),
+            "Without an icon on screen the pointer never opens the line")
+        XCTAssertFalse(AppDelegate.pointerRestsOnStatusIcon(.zero, icon: .zero))
+    }
+
+    func testShelfBackdropLetsClicksReachTheDesktopWhileCardsStillTakeThem() throws {
+        _ = NSApplication.shared
+        let f = try SyntheticFixture(); defer { f.cleanup() }
+        let store = try LibraryStore(defaults: f.defaults, inbox: f.inbox, now: { f.date })
+        let first = try store.captureImage(f.image()); f.date.addTimeInterval(1)
+        let second = try store.captureImage(f.image())
+        let line = Line(defaults: f.defaults, inbox: f.inbox, now: { f.date }, breeze: false, library: store)
+        line.revealed = true
+        let width: CGFloat = 1440
+        let host = NSHostingView(rootView: LineView(line: line)); host.sizingOptions = []
+        let panel = LinePanel(content: host)
+        panel.contentHeight = line.panelHeight
+        panel.setFrame(NSRect(x: -10000, y: -10000, width: width, height: line.panelHeight), display: false)
+        defer { line.revealed = false; panel.contentView = nil }
+        let deadline = Date().addingTimeInterval(5)
+        while (line.hitRects[first.id] == nil || line.hitRects[second.id] == nil) && Date() < deadline {
+            host.layoutSubtreeIfNeeded(); RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        let card = try XCTUnwrap(line.hitRects[first.id])
+        XCTAssertTrue(line.acceptsPointer(at: CGPoint(x: card.midX, y: card.midY)), "A card still takes the pointer")
+        XCTAssertEqual(line.maximumScrollOffset, 0, "Two cards do not overflow, so no swipe band is claimed")
+        // Inside the row's backdrop, away from every card and control: the
+        // backdrop is only drawn, the click belongs to whatever is underneath.
+        for point in [CGPoint(x: width - 60, y: Layout.panelHeight - 30), CGPoint(x: width / 2 + 200, y: Layout.panelHeight / 2),
+                      CGPoint(x: card.midX, y: Layout.panelHeight - 8)] {
+            XCTAssertFalse(line.acceptsPointer(at: point), "The shelf backdrop must not catch clicks at \(point)")
+        }
+    }
 }

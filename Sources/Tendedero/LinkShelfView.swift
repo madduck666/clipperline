@@ -64,7 +64,7 @@ private struct LinkCard: View {
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Frame.radius))
                 .background(renderState.theme.wash(.links), in: RoundedRectangle(cornerRadius: Frame.radius))
                 .overlay(RoundedRectangle(cornerRadius: Frame.radius).strokeBorder(links.selectedIDs.contains(entry.id) ? Color.accentColor : .clear, lineWidth: 3))
-                .overlay(alignment: .topLeading) { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).frame(width: 20, height: 20).glassFrame(circle: true).padding(3).opacity(hovering ? 1 : 0).allowsHitTesting(false) }
+                .overlay(alignment: .topLeading) { if hovering { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).frame(width: 20, height: 20).glassFrame(circle: true).padding(3).allowsHitTesting(false).transition(.opacity) } }
                 .overlay(alignment: .topTrailing) { FavoriteBadge(pinned: entry.favorite, visible: hovering || links.focusedID == entry.id) }
                 .overlay(LinkGrabArea(entry: entry, line: line, links: links))
                 .overlay(alignment: .bottomLeading) { QuickSelectionBadge(number: quickNumber) }

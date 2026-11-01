@@ -238,7 +238,7 @@ private struct SettingsView: View {
                 Text(L("Favorites, folders and tags keep items permanently. Other copies follow your history setting.")).font(.caption).foregroundStyle(.secondary)
             } header: { Text(L("Library")) }
             Section(L("Bring the line down")) {
-                Toggle(L("When the pointer rests in the menu bar"), isOn: model.binding(get: { AppDelegate.opensFromMenuBar }, set: { AppDelegate.opensFromMenuBar = $0 }))
+                Toggle(L("When the pointer rests on the menu bar icon"), isOn: model.binding(get: { AppDelegate.opensFromMenuBar }, set: { AppDelegate.opensFromMenuBar = $0 }))
                 Toggle(L("When something new hangs"), isOn: model.binding(get: { AppDelegate.peeksAtNew }, set: { AppDelegate.peeksAtNew = $0 }))
                 Toggle(L("Over full screen apps"), isOn: model.binding(get: { FullScreen.showLineOver }, set: { FullScreen.showLineOver = $0; model.refreshVisibility() }))
             }

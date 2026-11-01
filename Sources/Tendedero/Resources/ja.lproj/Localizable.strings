@@ -212,7 +212,7 @@
 "Watch" = "監視";
 "Watch up to three folders for new images. Removing a folder leaves its files untouched." = "Watch up to three folders for new images. Removing a folder leaves its files untouched.";
 "When something new hangs" = "新しいものが吊るされたとき";
-"When the pointer rests in the menu bar" = "ポインタがメニューバーにとどまったとき";
+"When the pointer rests on the menu bar icon" = "ポインタがメニューバーのアイコンにとどまったとき";
 "You can restore them from Library → Trash. Original files stay in place." = "You can restore them from Library → Trash. Original files stay in place.";
 
 // Standard text editing

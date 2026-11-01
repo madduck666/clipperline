@@ -212,7 +212,7 @@
 "Watch" = "Watch";
 "Watch up to three folders for new images. Removing a folder leaves its files untouched." = "Watch up to three folders for new images. Removing a folder leaves its files untouched.";
 "When something new hangs" = "When something new hangs";
-"When the pointer rests in the menu bar" = "When the pointer rests in the menu bar";
+"When the pointer rests on the menu bar icon" = "When the pointer rests on the menu bar icon";
 "You can restore them from Library → Trash. Original files stay in place." = "You can restore them from Library → Trash. Original files stay in place.";
 
 // Standard text editing

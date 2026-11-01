@@ -161,8 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // What brings the line down, from the menu bar's "Bring the line down".
     // Out of the box, the first two are on and the third off.
 
-    /// Resting the pointer in the menu bar. Off, only the shortcut and the
-    /// menu open it.
+    /// Resting the pointer on the line's own menu bar icon. Off, only the
+    /// shortcut and the menu open it.
     static var opensFromMenuBar: Bool {
         get { !UserDefaults.standard.bool(forKey: "menuBarRevealOff") }
         set { UserDefaults.standard.set(!newValue, forKey: "menuBarRevealOff") }
@@ -690,10 +690,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.ignoresMouseEvents = true
     }
 
-    /// How long the cursor rests against the top edge before the line comes
-    /// down. Short enough to feel instant, long enough that a quick trip to
-    /// the menu bar does not trigger it.
+    /// How long the cursor rests on the menu bar icon before the line comes
+    /// down. Short enough to feel instant, long enough that passing over the
+    /// icon on the way to another menu does not trigger it.
     private static let revealDelay: TimeInterval = 0.25
+
+    /// Where the line's menu bar icon is on screen: its status item window.
+    var statusIconFrame: NSRect? {
+        guard let window = statusItem?.button?.window, window.isVisible else { return nil }
+        return window.frame
+    }
+
+    /// Only the pointer on the line's own menu bar icon opens it. Anywhere
+    /// else in the menu bar, other menus, other icons or a passing pointer,
+    /// leaves the line where it is. The zone reaches one point above the icon
+    /// so a pointer pushed against the top edge over it still counts.
+    static func statusIconHotZone(_ icon: NSRect) -> NSRect {
+        NSRect(x: icon.minX, y: icon.minY, width: icon.width, height: icon.height + 1)
+    }
+
+    static func pointerRestsOnStatusIcon(_ mouse: NSPoint, icon: NSRect?) -> Bool {
+        guard let icon, icon.width > 0, icon.height > 0 else { return false }
+        return NSMouseInRect(mouse, statusIconHotZone(icon), false)
+    }
 
     /// The menu bar strip at the top of a screen. With an auto-hiding menu
     /// bar the visible frame reaches the top, so the system thickness is used.
@@ -745,11 +764,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let pointerRevealAllowed = pointerRevealIsAllowed(inMenuBar: inMenuBar)
 
         guard isRevealed else {
-            // Resting in the menu bar brings the line down on that screen.
-            // Pushing against the top edge is part of it, and it also works
-            // when another display sits above and the pointer never stops.
-            if Self.opensFromMenuBar, let screen = screenUnderPointer, pointerRevealAllowed,
-               !FullScreen.blocksLine(on: screen) {
+            // Resting on the menu bar icon brings the line down on that
+            // screen. Moving through the rest of the menu bar does not.
+            if Self.opensFromMenuBar, pointerRevealAllowed,
+               Self.pointerRestsOnStatusIcon(mouse, icon: statusIconFrame),
+               let screen = screenUnderPointer, !FullScreen.blocksLine(on: screen) {
                 let since = hotZoneSince ?? now
                 hotZoneSince = since
                 if now.timeIntervalSince(since) >= Self.revealDelay {
@@ -809,12 +828,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !GrabView.isDragging else { return }
         let local = panel.convertPoint(fromScreen: mouse)
         let flipped = CGPoint(x: local.x, y: panel.frame.height - local.y)
-        var overPhoto = line.hitRects.values.contains { $0.insetBy(dx: -4, dy: -4).contains(flipped) }
-        // A line longer than the screen also takes the band the photos hang
-        // in, gaps included, so a swipe anywhere along it moves it.
-        if !overPhoto {
-            overPhoto = line.scrollableShelfBandContains(flipped)
-        }
+        let overPhoto = line.acceptsPointer(at: flipped)
         if panel.ignoresMouseEvents == overPhoto {
             panel.ignoresMouseEvents = !overPhoto
         }

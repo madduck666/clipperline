@@ -16,6 +16,7 @@ struct LineView: View {
             VStack(spacing: 0) {
                 ForEach(line.presentation.shelves, id: \.self) { shelf in
                     ZStack(alignment: .topLeading) {
+                        ShelfBackdrop().frame(width: width, height: Layout.panelHeight)
                         Rope(width: width)
                         if shelf == .texts { TextShelfView(line: line, texts: texts, width: width) }
                         else if shelf == .links { LinkShelfView(line: line, links: links, width: width) }
@@ -134,6 +135,26 @@ private struct ShelfNotice: View {
     }
 }
 
+/// A smoked glass band behind each shelf row, so the cards stand out from a
+/// busy desktop instead of blending into it. It is only a picture: it reports
+/// no hit rectangle, so the panel keeps ignoring the pointer over it and a
+/// click there reaches the app or the desktop underneath, exactly as it does
+/// between cards. A plain tint, not a live blur: it costs nothing to slide
+/// down with the line and nothing while it rests over moving content.
+struct ShelfBackdrop: View {
+    static let cornerRadius: CGFloat = 18
+    static let topTint = 0.40, bottomTint = 0.30
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+        shape.fill(LinearGradient(colors: [Color.black.opacity(Self.topTint), Color.black.opacity(Self.bottomTint)],
+                                  startPoint: .top, endPoint: .bottom))
+            .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+            .padding(.horizontal, 6).padding(.top, 2).padding(.bottom, 4)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
 struct Rope: View {
     let width: CGFloat
     private var path: Path {
@@ -143,14 +164,22 @@ struct Rope: View {
                 control: CGPoint(x: width / 2, y: Layout.ropeTop + 2 * Layout.sag(width: width)))
         }
     }
+    /// The line fades out at both ends. Shading each stroke with the fade
+    /// draws it directly; a mask and a blur over the full screen width made
+    /// every row an offscreen pass on each frame the line slid or swayed.
+    private func faded(_ color: Color) -> LinearGradient {
+        LinearGradient(stops: [.init(color: color.opacity(0), location: 0), .init(color: color, location: 0.08),
+            .init(color: color, location: 0.92), .init(color: color.opacity(0), location: 1)],
+            startPoint: .leading, endPoint: .trailing)
+    }
     var body: some View {
         ZStack {
-            path.stroke(Color.black.opacity(0.22), lineWidth: 1.4).offset(y: 1.2).blur(radius: 1.2)
-            path.stroke(Color(white: 0.55), lineWidth: 1.2)
-            path.stroke(Color.white.opacity(0.45), lineWidth: 0.4).offset(y: -0.35)
-        }.mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.08),
-            .init(color: .black, location: 0.92), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing))
-            .allowsHitTesting(false)
+            // Two soft strokes stand in for the blurred shadow.
+            path.stroke(faded(Color.black.opacity(0.09)), lineWidth: 3.4).offset(y: 1.2)
+            path.stroke(faded(Color.black.opacity(0.16)), lineWidth: 1.9).offset(y: 1.2)
+            path.stroke(faded(Color(white: 0.55)), lineWidth: 1.2)
+            path.stroke(faded(Color.white.opacity(0.45)), lineWidth: 0.4).offset(y: -0.35)
+        }.allowsHitTesting(false)
     }
 }
 struct HitRectsKey: PreferenceKey {

@@ -212,7 +212,7 @@
 "Watch" = "İzle";
 "Watch up to three folders for new images. Removing a folder leaves its files untouched." = "Yeni görseller için en fazla üç klasör izleyin. İzlemeyi durdurmak dosyaları değiştirmez.";
 "When something new hangs" = "Yeni bir şey asıldığında";
-"When the pointer rests in the menu bar" = "İşaretçi menü çubuğunda durduğunda";
+"When the pointer rests on the menu bar icon" = "İşaretçi menü çubuğu simgesinin üzerinde durduğunda";
 "You can restore them from Library → Trash. Original files stay in place." = "Kütüphane → Çöp’ten geri yükleyebilirsiniz. Orijinal dosyalar yerinde kalır.";
 
 // Standard text editing
