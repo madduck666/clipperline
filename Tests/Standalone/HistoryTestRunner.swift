@@ -588,6 +588,7 @@ enum HistoryTestRunner {
             ("testSettingsBindingsApplyAppearanceWithoutMovingFocusOrDroppingHistory", settings.testSettingsBindingsApplyAppearanceWithoutMovingFocusOrDroppingHistory),
             ("testCompactMenuIdentifiesTheAppAndKeepsDailyActions", settings.testCompactMenuIdentifiesTheAppAndKeepsDailyActions),
             ("testDeveloperBuildUpdatesComeOnlyFromTheRecordedForkAndOfferAnotherTestedCommit", settings.testDeveloperBuildUpdatesComeOnlyFromTheRecordedForkAndOfferAnotherTestedCommit),
+            ("testOpeningWithNoOtherCopyRunningStartsNormally", settings.testOpeningWithNoOtherCopyRunningStartsNormally),
             ("testSideRemovalUsesVisibleNewestLeftOrderAndConfirmationSnapshot", merge.testSideRemovalUsesVisibleNewestLeftOrderAndConfirmationSnapshot),
             ("testSizePersistsWithoutLosingHistoryOrThumbnailBounds", merge.testSizePersistsWithoutLosingHistoryOrThumbnailBounds),
             ("testRecordingFileTransfersPreserveMixedItemsWithoutReadingMovieBytes", merge.testRecordingFileTransfersPreserveMixedItemsWithoutReadingMovieBytes),

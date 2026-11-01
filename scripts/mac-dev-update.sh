@@ -166,7 +166,20 @@ swap() {
   fail "Uygulama değiştirilemedi. Sistem Ayarları → Gizlilik ve Güvenlik → Uygulama Yönetimi'nde ClipBoardLine Dev'e (Terminal'den kurduysan Terminal'e) izin verip tekrar dene."
 }
 
-running() { pgrep -f "$TARGET/Contents/MacOS/" >/dev/null 2>&1; }
+# Any running copy, wherever it runs from: macOS starts an app opened after
+# "Open Anyway" from a hidden translocated path, not from Applications.
+RUNNING_PATTERN="/$APP_NAME.app/Contents/MacOS/"
+running() { pgrep -f "$RUNNING_PATTERN" >/dev/null 2>&1; }
+quit_running() {
+  local attempt
+  for attempt in $(seq 1 20); do
+    running || return 0
+    osascript -e 'tell application id "org.clipboardline.community" to quit' >/dev/null 2>&1 || true
+    sleep 0.5
+  done
+  pkill -TERM -f "$RUNNING_PATTERN" 2>/dev/null || true
+  sleep 1
+}
 
 main() {
   [ "$(uname -s)" = Darwin ] || fail "Bu betik yalnızca Mac'te çalışır."
@@ -195,8 +208,7 @@ main() {
       prepare >/dev/null
       if running; then
         say "Çalışan ClipBoardLine Dev kapatılıyor"
-        osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
-        for _ in $(seq 1 20); do running || break; sleep 0.5; done
+        quit_running
       fi
       swap
       if [ -z "$installed" ]; then

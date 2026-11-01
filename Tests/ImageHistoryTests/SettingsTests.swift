@@ -115,4 +115,10 @@ import XCTest
         XCTAssertFalse(DevBuildUpdater.offers(installed, installed: installed), "A build never offers itself")
         XCTAssertFalse(DevBuildUpdater.offers(nil, installed: installed))
     }
+
+    func testOpeningWithNoOtherCopyRunningStartsNormally() {
+        XCTAssertTrue(AppDelegate.replaceOtherInstances(bundleIdentifier: nil))
+        XCTAssertTrue(AppDelegate.replaceOtherInstances(bundleIdentifier: "org.clipboardline.tests.\(UUID().uuidString)", timeout: 0.1),
+            "With no other copy of the app running, the launch carries on")
+    }
 }

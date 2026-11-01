@@ -177,7 +177,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set { UserDefaults.standard.set(!newValue, forKey: "quietHang") }
     }
 
+    /// Only one copy of the line runs: two would each catch every screenshot
+    /// and show two menu bar icons. A newly opened copy, such as a freshly
+    /// installed update, replaces an older one still running, including one
+    /// macOS started from a hidden translocated path. Returns false when an
+    /// older copy would not quit, for example over an unsaved edit; that copy
+    /// keeps the user's work and this one steps aside.
+    static func replaceOtherInstances(bundleIdentifier: String?, timeout: TimeInterval = 5) -> Bool {
+        guard let id = bundleIdentifier else { return true }
+        let me = ProcessInfo.processInfo.processIdentifier
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: id).filter { $0.processIdentifier != me }
+        guard !others.isEmpty else { return true }
+        others.forEach { _ = $0.terminate() }
+        let deadline = Date().addingTimeInterval(timeout)
+        while others.contains(where: { !$0.isTerminated }) && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        return others.allSatisfy(\.isTerminated)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if watchesFiles, !Self.replaceOtherInstances(bundleIdentifier: Bundle.main.bundleIdentifier) {
+            NSApp.terminate(nil); return
+        }
         EditingMenu.install(onSettings: { [weak self] in self?.showSettings() })
         if startupError != nil { setUpStatusItem(); DispatchQueue.main.async { [weak self] in self?.showStartupFailure() }; return }
         let host = ShelfHostingView(rootView: LineView(line: line))
