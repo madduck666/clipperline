@@ -341,6 +341,14 @@
 "GitHub token removed from this Mac." = "GitHub token removed from this Mac.";
 "GitHub token saved in Keychain." = "GitHub token saved in Keychain.";
 "Install and reopen" = "Install and reopen";
+"Developer build updates" = "Actualizaciones de la versión de desarrollo";
+"Updates come from the tested builds of this fork. There is no Open Anyway prompt and privacy permissions are kept." = "Las actualizaciones vienen de las versiones probadas de este fork. No aparece «Abrir igualmente» y se conservan los permisos de privacidad.";
+"Up to date (%@)." = "Actualizado (%@).";
+"A new build is ready (%@)." = "Hay una nueva versión lista (%@).";
+"Downloading and preparing the update…" = "Descargando y preparando la actualización…";
+"The update could not be checked." = "No se pudo comprobar la actualización.";
+"The update could not be prepared: %@" = "No se pudo preparar la actualización: %@";
+"macOS may ask once for your password to trust this Mac's own signing certificate." = "macOS puede pedir tu contraseña una vez para confiar en el certificado de firma propio de este Mac.";
 "Quit the app to finish installing the update." = "Quit the app to finish installing the update.";
 "Release notes" = "Release notes";
 "Save token" = "Save token";

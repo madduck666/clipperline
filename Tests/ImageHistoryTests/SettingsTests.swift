@@ -96,4 +96,23 @@ import XCTest
         XCTAssertFalse(try XCTUnwrap(menu.items.first { $0.title == L("Check for updates…") }).isEnabled)
         XCTAssertEqual(menu.items.filter { $0.submenu != nil }.count, 0)
     }
+
+    func testDeveloperBuildUpdatesComeOnlyFromTheRecordedForkAndOfferAnotherTestedCommit() {
+        let installed = String(repeating: "a", count: 40), newer = String(repeating: "b", count: 40)
+        XCTAssertNil(DevBuildUpdater.configuration(from: nil), "A local or official build has no developer updater")
+        XCTAssertFalse(DevBuildUpdater(info: nil).isActive)
+        XCTAssertNil(DevBuildUpdater.configuration(from: ["ClipBoardLineDevBuild": installed]))
+        XCTAssertNil(DevBuildUpdater.configuration(from: ["ClipBoardLineDevBuild": "main", "ClipBoardLineDevRepository": "owner/repo"]))
+        for repository in ["owner", "owner/repo/extra", "https://github.com/owner/repo", "owner/re po"] {
+            XCTAssertNil(DevBuildUpdater.configuration(from: ["ClipBoardLineDevBuild": installed, "ClipBoardLineDevRepository": repository]),
+                "Only one GitHub repository name is accepted: \(repository)")
+        }
+        let configuration = DevBuildUpdater.configuration(from: ["ClipBoardLineDevBuild": installed, "ClipBoardLineDevRepository": "owner/repo"])
+        XCTAssertEqual(configuration, DevBuildUpdater.Configuration(build: installed, repository: "owner/repo"))
+        XCTAssertEqual(DevBuildUpdater.publishedBuild(Data((newer + "\n").utf8)), newer)
+        XCTAssertNil(DevBuildUpdater.publishedBuild(Data("<html>Not Found</html>".utf8)), "An error page is never an update")
+        XCTAssertTrue(DevBuildUpdater.offers(newer, installed: installed))
+        XCTAssertFalse(DevBuildUpdater.offers(installed, installed: installed), "A build never offers itself")
+        XCTAssertFalse(DevBuildUpdater.offers(nil, installed: installed))
+    }
 }

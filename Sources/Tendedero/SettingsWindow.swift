@@ -429,8 +429,14 @@ private struct SettingsView: View {
 @MainActor
 private struct AppUpdatesView: View {
     @ObservedObject var updates: AppUpdateController
+    @ObservedObject private var developer = DevBuildUpdater.shared
     @State private var token = ""
     var body: some View {
+        // A developer build updates from its own fork; the official update
+        // controls cannot work in it and would only show disabled buttons.
+        if developer.isActive { DeveloperBuildUpdatesView(updater: developer) } else { official }
+    }
+    @ViewBuilder private var official: some View {
         if updates.usesPublicUpdates {
             Section {
                 HStack(spacing: 16) {
@@ -509,5 +515,45 @@ private struct AppUpdatesView: View {
                 if updates.hasSavedToken { Label(L("Token saved"), systemImage: "checkmark.shield") .font(.caption).foregroundStyle(.secondary) }
             }
         }.disabled(!updates.isConfigured || updates.busy) }
+    }
+}
+
+
+@MainActor
+private struct DeveloperBuildUpdatesView: View {
+    @ObservedObject var updater: DevBuildUpdater
+    var body: some View {
+        Section {
+            HStack(spacing: 16) {
+                Image(systemName: AppIdentity.statusSymbol)
+                    .font(.system(size: 32)).foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(AppIdentity.name).font(.title3.bold())
+                    Text(updater.installedShortBuild).font(.caption.monospaced()).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if updater.availableBuild != nil {
+                    Label(L("Update available"), systemImage: "arrow.down.circle.fill")
+                        .font(.caption.weight(.medium)).foregroundStyle(.tint)
+                }
+            }.padding(.vertical, 8)
+        }
+        Section(L("Developer build updates")) {
+            Text(L("Updates come from the tested builds of this fork. There is no Open Anyway prompt and privacy permissions are kept."))
+                .font(.caption).foregroundStyle(.secondary)
+            Text(updater.status).textSelection(.enabled)
+            if let error = updater.error {
+                Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+            }
+            if updater.busy { ProgressView().controlSize(.small) }
+            HStack {
+                Button(L("Check for updates…"), action: updater.check)
+                if updater.availableBuild != nil {
+                    Button(L("Install and reopen"), action: updater.installAndReopen).buttonStyle(.borderedProminent)
+                }
+            }.disabled(updater.busy)
+            Text(L("macOS may ask once for your password to trust this Mac's own signing certificate."))
+                .font(.caption).foregroundStyle(.secondary)
+        }.onAppear { if updater.availableBuild == nil && !updater.busy { updater.check() } }
     }
 }

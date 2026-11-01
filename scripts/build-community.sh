@@ -69,6 +69,8 @@ cp "$OUT/ClipBoardLine" "$STAGE/Contents/MacOS/ClipBoardLine"
 ditto "$FRAMEWORK" "$STAGE/Contents/Frameworks/Sparkle.framework"
 cp "$ROOT/.build/artifacts/sparkle/Sparkle/LICENSE" "$STAGE/Contents/Resources/LICENSE-Sparkle.txt"
 cp "$ROOT/LICENSE" "$STAGE/Contents/Resources/LICENSE.txt"
+# The in-app developer updater runs this same script (Settings → Updates).
+cp "$ROOT/scripts/mac-dev-update.sh" "$STAGE/Contents/Resources/mac-dev-update.sh"
 for document in THIRD_PARTY_NOTICES.md PRIVACY.md SECURITY.md; do
   if [ -f "$ROOT/$document" ]; then cp "$ROOT/$document" "$STAGE/Contents/Resources/$document"; fi
 done
@@ -105,6 +107,14 @@ info = {
     'NSDocumentsFolderUsageDescription': 'ClipBoardLine Dev watches only image folders you choose.',
     'NSDownloadsFolderUsageDescription': 'ClipBoardLine Dev watches only image folders you choose.'
 }
+# A CI build records its commit and fork so the developer updater can tell
+# whether dev-latest is newer. Local builds leave both out and do not update.
+import os, re
+build, repository = os.environ.get('CLIPBOARDLINE_DEV_BUILD', ''), os.environ.get('CLIPBOARDLINE_DEV_REPOSITORY', '')
+if build or repository:
+    if not re.fullmatch(r'[0-9a-f]{40}', build) or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
+        raise SystemExit('CLIPBOARDLINE_DEV_BUILD and CLIPBOARDLINE_DEV_REPOSITORY must name one commit of one repository')
+    info['ClipBoardLineDevBuild'], info['ClipBoardLineDevRepository'] = build, repository
 # No official feed, update key, credential helper or private signing profile is
 # embedded. Both installed updater paths reject this development bundle ID.
 for key in ('CFBundleShortVersionString', 'CFBundleVersion'):

@@ -25,6 +25,9 @@ jobs:
         run: swift scripts/check-strings.swift
       - name: Build isolated, keyless developer application
         run: bash scripts/build-community.sh
+        env:
+          CLIPBOARDLINE_DEV_BUILD: ${{ github.sha }}
+          CLIPBOARDLINE_DEV_REPOSITORY: ${{ github.repository }}
       - name: Verify developer signature
         run: codesign --verify --deep --strict "build/ClipBoardLine Dev.app"
       - name: Package the developer application as a disk image and archive
