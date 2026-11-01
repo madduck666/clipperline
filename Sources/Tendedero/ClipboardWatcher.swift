@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -164,13 +163,33 @@ final class ClipboardWatcher {
     }
 }
 
-/// The pixels of a picture, independent of its file format or metadata: a
-/// PNG and a TIFF of the same image match. Cheap size checks come first, so
-/// only same-sized pictures are ever decoded.
+/// What a picture looks like, independent of its file format, colour
+/// profile and small re-encoding differences. Apps that restore the
+/// clipboard after pasting (Codex dictation is built on Electron) write the
+/// previous image back re-encoded: the colour profile can be dropped or
+/// converted and alpha rounded, so the bytes and exact pixels differ while
+/// the picture is the same. Two small thumbnails are kept, one colour
+/// managed and one from the raw channel values, and either may match.
 struct ImageFingerprint: Equatable {
+    static let side = 16
     let width: Int
     let height: Int
-    let digest: Data
+    let managed: [UInt8]
+    let raw: [UInt8]
+
+    /// Same aspect ratio and, on average, within a few levels per channel.
+    func matches(_ other: ImageFingerprint) -> Bool {
+        let ratio = Double(width) / Double(height), otherRatio = Double(other.width) / Double(other.height)
+        guard abs(ratio - otherRatio) <= 0.02 * max(ratio, otherRatio) else { return false }
+        return Self.distance(managed, other.managed) <= 4 || Self.distance(raw, other.raw) <= 4
+    }
+
+    static func distance(_ a: [UInt8], _ b: [UInt8]) -> Double {
+        guard a.count == b.count, !a.isEmpty else { return .infinity }
+        var total = 0
+        for index in a.indices { total += abs(Int(a[index]) - Int(b[index])) }
+        return Double(total) / Double(a.count)
+    }
 }
 
 extension ImageFingerprint {
@@ -186,18 +205,25 @@ extension ImageFingerprint {
 
     private init?(source: CGImageSource) {
         guard let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary),
-              image.width > 0, image.height > 0, image.width <= ClipboardWatcher.maximumPixelCount / image.height else { return nil }
-        let bytesPerRow = image.width * 4
-        var pixels = Data(count: bytesPerRow * image.height)
+              image.width > 0, image.height > 0, image.width <= ClipboardWatcher.maximumPixelCount / image.height,
+              let sRGB = CGColorSpace(name: CGColorSpace.sRGB),
+              let managed = Self.thumbnail(image, space: sRGB) else { return nil }
+        // The same channel values read as sRGB, without colour matching.
+        let reinterpreted = image.colorSpace?.model == .rgb ? image.copy(colorSpace: sRGB) : nil
+        let raw = reinterpreted.flatMap { Self.thumbnail($0, space: sRGB) } ?? managed
+        self.init(width: image.width, height: image.height, managed: managed, raw: raw)
+    }
+
+    private static func thumbnail(_ image: CGImage, space: CGColorSpace) -> [UInt8]? {
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
         let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
-            guard let context = CGContext(data: buffer.baseAddress, width: image.width, height: image.height,
-                bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            guard let context = CGContext(data: buffer.baseAddress, width: side, height: side, bitsPerComponent: 8,
+                bytesPerRow: side * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.interpolationQuality = .high
+            context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
             return true
         }
-        guard drawn else { return nil }
-        self.init(width: image.width, height: image.height, digest: Data(SHA256.hash(data: pixels)))
+        return drawn ? pixels : nil
     }
 
     /// Pixel size from the file header, without decoding the picture.

@@ -72,7 +72,7 @@ final class ClipboardWatcherTests: ClipboardTestCase {
             // here every picture the watcher has saved.
             watcher.isAlreadyHung = { fingerprint in
                 ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
-                    .contains { ImageFingerprint(url: $0) == fingerprint }
+                    .contains { ImageFingerprint(url: $0)?.matches(fingerprint) == true }
             }
             watcher.start()
             source.copy([.png: try imageData(.png)])
@@ -85,6 +85,11 @@ final class ClipboardWatcherTests: ClipboardTestCase {
             source.copy([.tiff: try imageData(.tiff)])
             watcher.check()
             source.copy([.png: try imageData(.png)])
+            watcher.check()
+            // Restored re-encoded, as Electron apps write it back: every
+            // channel a level or two off, so neither bytes nor pixels match.
+            let reencoded: [UInt8] = [253, 2, 1, 255, 1, 254, 2, 255, 2, 1, 253, 255, 254, 253, 254, 255]
+            source.copy([.png: try imageData(.png, pixels: reencoded)])
             watcher.check()
             XCTAssertEqual(received().count, 1, "A restored clipboard must not hang the same picture again")
             let other: [UInt8] = [0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255]

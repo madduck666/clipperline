@@ -361,9 +361,22 @@ final class ImageHistoryTests: HistoryTestCase {
         CGImageDestinationAddImage(destination, image, nil)
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         XCTAssertTrue(line.hasImage(matching: try XCTUnwrap(ImageFingerprint(data: tiff as Data))))
-        let other = ImageFingerprint(width: same.width, height: same.height, digest: Data(repeating: 0, count: 32))
-        XCTAssertFalse(line.hasImage(matching: other), "Different pixels of the same size are a new picture")
-        let larger = ImageFingerprint(width: same.width + 1, height: same.height, digest: same.digest)
-        XCTAssertFalse(line.hasImage(matching: larger))
+        let inverted = same.managed.enumerated().map { $0.offset % 4 == 3 ? $0.element : 255 - $0.element }
+        let other = ImageFingerprint(width: same.width, height: same.height, managed: inverted, raw: inverted)
+        XCTAssertFalse(line.hasImage(matching: other), "A picture that looks different is a new picture")
+        let wider = ImageFingerprint(width: same.width * 2, height: same.height, managed: same.managed, raw: same.raw)
+        XCTAssertFalse(line.hasImage(matching: wider), "A different shape is a different picture")
+        // Re-encoded without its colour profile and a level or two off.
+        let pixels: [UInt8] = [42, 158, 212, 255]
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData))
+        let shifted = try XCTUnwrap(CGImage(width: 1, height: 1, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: 1), provider: provider,
+            decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let png = NSMutableData()
+        let encoder = try XCTUnwrap(CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(encoder, shifted, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(encoder))
+        XCTAssertTrue(line.hasImage(matching: try XCTUnwrap(ImageFingerprint(data: png as Data))),
+            "A clipboard restore that re-encodes the picture is still the same picture")
     }
 }

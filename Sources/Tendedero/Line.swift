@@ -748,14 +748,16 @@ final class Line: ObservableObject {
     var visibleRange: Range<Int> { Layout.visibleRange(count: displayItems.count, width: viewportWidth, offset: scrollOffset) }
 
     /// Fingerprints of the pictures on the line, by file and modification
-    /// date, so a check decodes each same-sized picture once.
+    /// date, so a check decodes each picture of a similar shape once.
     private var fingerprints: [String: (modified: Date?, value: ImageFingerprint)] = [:]
 
-    /// Whether a picture with these pixels already hangs on the image shelf.
+    /// Whether a picture that looks like this already hangs on the image shelf.
     func hasImage(matching fingerprint: ImageFingerprint) -> Bool {
+        let ratio = Double(fingerprint.width) / Double(fingerprint.height)
         for item in items where !item.falling && !isRecordingFile(item.url) {
-            guard let size = ImageFingerprint.pixelSize(of: item.url),
-                  size.width == fingerprint.width, size.height == fingerprint.height else { continue }
+            guard let size = ImageFingerprint.pixelSize(of: item.url), size.width > 0, size.height > 0 else { continue }
+            let itemRatio = Double(size.width) / Double(size.height)
+            guard abs(itemRatio - ratio) <= 0.02 * max(itemRatio, ratio) else { continue }
             let path = item.url.standardizedFileURL.path
             let modified = (try? item.url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
             let value: ImageFingerprint?
@@ -764,7 +766,7 @@ final class Line: ObservableObject {
                 value = ImageFingerprint(url: item.url)
                 if let value { fingerprints[path] = (modified, value) }
             }
-            if value == fingerprint { return true }
+            if let value, value.matches(fingerprint) { return true }
         }
         return false
     }
