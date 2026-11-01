@@ -132,7 +132,7 @@ import XCTest
         let renamed = folder.appendingPathComponent("Clipperline.app")
         XCTAssertTrue(FileManager.default.fileExists(atPath: renamed.appendingPathComponent("Contents").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path))
-        XCTAssertEqual(opened, [renamed], "The app reopens from its new name")
+        XCTAssertEqual(opened.map(\.path), [renamed.path], "The app reopens from its new name")
         // Already renamed: nothing moves or reopens.
         XCTAssertFalse(AppDelegate.moveToCurrentName(bundle: renamed, name: "Clipperline", open: { opened.append($0) }))
         // A Clipperline already in place is never replaced by an older folder.
