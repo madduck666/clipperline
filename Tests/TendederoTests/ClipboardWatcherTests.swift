@@ -67,9 +67,13 @@ final class ClipboardWatcherTests: ClipboardTestCase {
 
     @MainActor
     func testRestoredClipboardImageAlreadyHungIsNotHungAgain() throws {
-        try withWatcher { watcher, source, _, received in
-            // The line's own check: the pixels of every picture it holds.
-            watcher.isAlreadyHung = { fingerprint in received().contains { ImageFingerprint(url: $0) == fingerprint } }
+        try withWatcher { watcher, source, folder, received in
+            // The line's own check: the pixels of every picture it holds,
+            // here every picture the watcher has saved.
+            watcher.isAlreadyHung = { fingerprint in
+                ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+                    .contains { ImageFingerprint(url: $0) == fingerprint }
+            }
             watcher.start()
             source.copy([.png: try imageData(.png)])
             watcher.check()
