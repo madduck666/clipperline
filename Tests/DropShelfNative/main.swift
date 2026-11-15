@@ -44,7 +44,7 @@ func L(_ key: String) -> String { key }
     var root: URL!
     var lastPoint = CGPoint.zero
     var finished = false
-    var packagedApp: Process?
+    var packagedApp: NSRunningApplication?
     var finderFixtures: [URL] = []
     var finderTrial = 0
     var packagedMode: Bool { CommandLine.arguments.count > 1 }
@@ -52,7 +52,7 @@ func L(_ key: String) -> String { key }
         guard !finished else { return }; finished = true
         post(.leftMouseUp, at: lastPoint)
         shelf.stop(); window?.orderOut(nil)
-        if let packagedApp, packagedApp.isRunning { packagedApp.terminate() }
+        if let packagedApp, !packagedApp.isTerminated { packagedApp.terminate() }
         if let root { try? FileManager.default.removeItem(at: root) }
         print("::\(success ? "notice" : "error") title=Native shelf drag::\(message)")
         fflush(stdout)
@@ -87,18 +87,34 @@ func L(_ key: String) -> String { key }
             window.isReleasedWhenClosed = false; window.title = "Synthetic drag source"; window.contentView = source
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
             if packagedMode {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("Contents/MacOS/ClipBoardLine")
-                process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
-                try process.run(); packagedApp = process
                 window.orderOut(nil)
-                Task { await self.pause(2); await self.runFinder() }
+                Task { await self.launchPackagedApp() }
             } else {
                 shelf.start()
                 Task { await self.run() }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 50) { self.finish("Native drag timed out", success: false) }
         } catch { finish("Could not create synthetic native fixture: \(error)", success: false) }
+    }
+    func launchPackagedApp() async {
+        do {
+            // Match a user's Finder launch and await LaunchServices readiness,
+            // rather than assuming a raw executable is ready after two seconds.
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.createsNewApplicationInstance = true
+            configuration.activates = false
+            let app = try await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: CommandLine.arguments[1]), configuration: configuration)
+            packagedApp = app
+            for _ in 0..<100 {
+                if app.isFinishedLaunching || app.isTerminated { break }
+                await pause(0.1)
+            }
+            guard app.bundleIdentifier == "org.clipboardline.community", app.isFinishedLaunching, !app.isTerminated else {
+                finish("Packaged application did not finish launching: ready=\(app.isFinishedLaunching), terminated=\(app.isTerminated)", success: false); return
+            }
+            print("::notice title=Packaged launch::LaunchServices reports the community application ready"); fflush(stdout)
+            await runFinder()
+        } catch { finish("LaunchServices could not open the packaged application: \(error)", success: false) }
     }
     func run() async {
         print("::notice title=Native shelf fixture::Starting AppKit source drag"); fflush(stdout)
@@ -199,7 +215,17 @@ func L(_ key: String) -> String { key }
             frame = visibleShelfFrame()
             if frame != nil { break }; await pause(0.1)
         }
-        guard let frame else { finish("Finder drag did not automatically reveal the shelf", success: false); return }
+        guard let frame else {
+            if let packagedApp {
+                let windows = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
+                let geometry = windows.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == packagedApp.processIdentifier }.prefix(12).compactMap { info -> String? in
+                    guard let bounds = info[kCGWindowBounds as String] as? [String: Any], let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { return nil }
+                    return "\(Int(rect.width))x\(Int(rect.height)):visible=\(info[kCGWindowIsOnscreen as String] as? Bool ?? false)"
+                }
+                print("::notice title=Packaged window diagnostics::ready=\(packagedApp.isFinishedLaunching), terminated=\(packagedApp.isTerminated), windows=\(geometry.joined(separator: ","))"); fflush(stdout)
+            }
+            finish("Finder drag did not automatically reveal the shelf", success: false); return
+        }
         let target = NSApp.windows.first { $0.isVisible && $0.contentView is DropShelfView }?.contentView as? DropShelfView
         let beforeEntries = target?.nativeEntries ?? 0, beforePreparations = target?.nativePreparations ?? 0, beforeDrops = target?.nativeDropAttempts ?? 0
         let end = globalPoint(NSPoint(x: frame.minX + 40, y: frame.minY + 70))
