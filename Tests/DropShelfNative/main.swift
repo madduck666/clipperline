@@ -67,7 +67,7 @@ func L(_ key: String) -> String { key }
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
             shelf.start()
             Task { await self.run() }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 25) { self.finish("Native drag timed out", success: false) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 50) { self.finish("Native drag timed out", success: false) }
         } catch { finish("Could not create synthetic native fixture: \(error)", success: false) }
     }
     func run() async {
@@ -94,6 +94,67 @@ func L(_ key: String) -> String { key }
         let summary = "starts=\(source.starts), entries=\(target.nativeEntries), prepare=\(target.nativePreparations), drops=\(target.nativeDropAttempts), mask=\(target.nativeSourceMask.rawValue), result=\(source.completed?.rawValue ?? 0), stored=\(shelf.model.files.count)"
         guard shelf.model.files.map(\.path) == [source.file.path], panel.isVisible else { finish(summary, success: false); return }
         guard (try? String(contentsOf: source.file)) == "original synthetic file" else { finish("Original source changed", success: false); return }
+        print("::notice title=Native AppKit source::\(summary)"); fflush(stdout)
+        await runFinder()
+    }
+    func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+        return value
+    }
+    func finderItemPoint(in element: AXUIElement, name: String, budget: inout Int) -> CGPoint? {
+        guard budget > 0 else { return nil }; budget -= 1
+        let named = [kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute].contains { key in
+            (attribute(element, key) as? String) == name
+        }
+        if named, let position = attribute(element, kAXPositionAttribute), let size = attribute(element, kAXSizeAttribute),
+           CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID() {
+            var point = CGPoint.zero, dimensions = CGSize.zero
+            if AXValueGetValue(position as! AXValue, .cgPoint, &point), AXValueGetValue(size as! AXValue, .cgSize, &dimensions), dimensions.width > 0, dimensions.height > 0 {
+                return CGPoint(x: point.x + min(dimensions.width / 2, 100), y: point.y + dimensions.height / 2)
+            }
+        }
+        for child in attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? [] {
+            if let point = finderItemPoint(in: child, name: name, budget: &budget) { return point }
+        }
+        return nil
+    }
+    func runFinder() async {
+        // This is a separate application's real file source, not injected drop
+        // callbacks. Only the generated test directory is opened in Finder.
+        guard AXIsProcessTrusted() else { finish("Native AppKit source passed, but the CI desktop does not authorize Finder accessibility; Finder acceptance is unverified.", success: false); return }
+        shelf.dismiss(); window.orderOut(nil)
+        NSWorkspace.shared.activateFileViewerSelecting([source.file])
+        await pause(1.5)
+        guard let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) else { finish("Finder is unavailable on the CI desktop", success: false); return }
+        let application = AXUIElementCreateApplication(finder.processIdentifier)
+        var start: CGPoint?
+        for _ in 0..<20 {
+            var budget = 2000
+            start = finderItemPoint(in: application, name: source.file.lastPathComponent, budget: &budget)
+            if start != nil { break }; await pause(0.2)
+        }
+        guard let start else { finish("Could not locate the generated file in Finder's accessibility tree", success: false); return }
+        post(.mouseMoved, at: start); await pause(0.1)
+        post(.leftMouseDown, at: start); await pause(0.1)
+        for step in 1...5 { post(.leftMouseDragged, at: CGPoint(x: start.x + Double(step) * 4, y: start.y)); await pause(0.05) }
+        var panel: NSWindow?
+        for _ in 0..<20 {
+            panel = NSApp.windows.first { $0.isVisible && $0.contentView is DropShelfView }
+            if panel != nil { break }; await pause(0.1)
+        }
+        guard let panel, let target = panel.contentView as? DropShelfView else { finish("Finder drag did not automatically reveal the shelf", success: false); return }
+        let beforeEntries = target.nativeEntries, beforePreparations = target.nativePreparations, beforeDrops = target.nativeDropAttempts
+        let end = globalPoint(panel.convertPoint(toScreen: NSPoint(x: 40, y: 70)))
+        for step in 1...20 {
+            let ratio = Double(step) / 20
+            post(.leftMouseDragged, at: CGPoint(x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio))
+            await pause(0.03)
+        }
+        await pause(0.3); post(.leftMouseUp, at: end); await pause(1)
+        let summary = "Finder: entries=\(target.nativeEntries - beforeEntries), prepare=\(target.nativePreparations - beforePreparations), drops=\(target.nativeDropAttempts - beforeDrops), mask=\(target.nativeSourceMask.rawValue), stored=\(shelf.model.files.count)"
+        guard shelf.model.files.map(\.path) == [source.file.path], panel.isVisible else { finish(summary, success: false); return }
+        guard (try? String(contentsOf: source.file)) == "original synthetic file" else { finish("Finder source file changed", success: false); return }
         finish(summary, success: true)
     }
 }

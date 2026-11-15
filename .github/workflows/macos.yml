@@ -102,7 +102,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release delete dev-latest --cleanup-tag --yes 2>/dev/null || true
-          gh release create dev-latest dev/Clipperline.zip dev/Clipperline.dmg dev/ClipBoardLine-Dev.zip dev/ClipBoardLine-Dev-build.txt \
-            --target "$GITHUB_SHA" --prerelease --latest=false --title "Clipperline (latest main)" \
-            --notes "Keyless developer build of $GITHUB_SHA after the macOS tests passed. Install and update it with scripts/mac-dev-update.sh."
+          # Keep the existing download available when GitHub rejects an upload.
+          # Publish the build marker last, after all archives have been replaced.
+          notes="Keyless developer build of $GITHUB_SHA after the macOS tests passed. The embedded build identity and build.txt identify the source; the rolling tag is retained. Install and update it with scripts/mac-dev-update.sh."
+          publish() {
+            if ! gh release view dev-latest >/dev/null 2>&1; then
+              gh release create dev-latest --target "$GITHUB_SHA" --prerelease --latest=false --title "Clipperline (latest main)" --notes "$notes" || return
+            fi
+            gh release upload dev-latest dev/Clipperline.zip dev/Clipperline.dmg dev/ClipBoardLine-Dev.zip --clobber || return
+            gh release upload dev-latest dev/ClipBoardLine-Dev-build.txt --clobber || return
+            gh release edit dev-latest --prerelease --latest=false --title "Clipperline (latest main)" --notes "$notes"
+          }
+          for attempt in 1 2 3; do
+            if publish >"$RUNNER_TEMP/dev-publish.log" 2>&1; then
+              cat "$RUNNER_TEMP/dev-publish.log"
+              exit 0
+            fi
+            sleep $((attempt * 3))
+          done
+          python3 - "$RUNNER_TEMP/dev-publish.log" <<'PYPUBLISH'
+          import pathlib, sys
+          for line in pathlib.Path(sys.argv[1]).read_text().splitlines()[-8:]:
+              print('::error title=Developer build publication::' + line.replace('%', '%25'))
+          PYPUBLISH
+          exit 1
