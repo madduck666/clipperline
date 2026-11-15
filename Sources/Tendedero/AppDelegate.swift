@@ -696,10 +696,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self, on == self.isRevealed else { return }
             if on {
                 // Resting: the glass comes back, once, after the last frame.
-                self.line.shelfSettled = true
+                if !self.line.shelfSettled { self.line.shelfSettled = true }
                 self.updateMousePassThrough(NSEvent.mouseLocation)
             } else { self.panel.orderOut(nil) }
         }
+        // Without a slide (Reduce Motion) the line rests at once: no frame
+        // of flat cards at full open.
+        if on, !panel.isShelfTransitioning { line.shelfSettled = true }
         // Install the hidden-to-open transform before exposing the window;
         // otherwise its first committed frame can flash fully open.
         if on, isPresent { panel.orderFrontRegardless() }

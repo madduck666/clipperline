@@ -31,6 +31,7 @@ final class LinePanel: NSPanel {
     private let hostedContent: NSView
     private var shelfRevealed = false
     private(set) var isShelfTransitioning = false
+    private var lastOpening: (added: CFTimeInterval, from: CGFloat)?
     static let shelfAnimationKey = "shelfRevealTranslation"
     var shelfModelOffset: CGFloat { compositor.layer?.sublayerTransform.m42 ?? 0 }
     var shelfPresentationOffset: CGFloat { compositor.layer?.presentation()?.sublayerTransform.m42 ?? shelfModelOffset }
@@ -162,7 +163,14 @@ final class LinePanel: NSPanel {
     func setShelfRevealed(_ on: Bool, animated: Bool = true, completion: (() -> Void)? = nil) {
         visibilityGeneration += 1
         let generation = visibilityGeneration
-        let current = shelfPresentationOffset
+        // An opening added in this same turn is not committed yet, and with
+        // no pinned start time its presentation value is not its starting
+        // point. Nothing of it has been shown, so a reversal starts there.
+        let now = CACurrentMediaTime()
+        let current: CGFloat
+        if let opening = lastOpening, now - opening.added < 1.0 / 60 { current = opening.from }
+        else { current = shelfPresentationOffset }
+        lastOpening = nil
         compositor.layer?.removeAnimation(forKey: Self.shelfAnimationKey)
         shelfRevealed = on
         let target: CGFloat = on ? 0 : hiddenShelfOffset
@@ -179,6 +187,7 @@ final class LinePanel: NSPanel {
             animation.toValue = NSValue(caTransform3D: CATransform3DMakeTranslation(0, target, 0))
             animation.duration = duration
             if on {
+                lastOpening = (now, current)
                 // Opening starts when the window server first shows it, not
                 // when it was requested: ordering the window in, taking focus
                 // and the SwiftUI update all land in this same commit, and a
@@ -197,7 +206,9 @@ final class LinePanel: NSPanel {
             }
             compositor.layer?.add(animation, forKey: Self.shelfAnimationKey)
         }
-        let delay = isShelfTransitioning ? duration : 0
+        // The opening starts at its commit, a little after this request, so
+        // its timer allows for that; the animation removes itself at its end.
+        let delay = isShelfTransitioning ? duration + (on ? 0.08 : 0) : 0
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.visibilityGeneration == generation else { return }
             self.compositor.layer?.removeAnimation(forKey: Self.shelfAnimationKey)
