@@ -235,3 +235,14 @@ executes the shipped UI with synthetic IPC. The native Electron suite includes
 programmatic drop injection does not prove native automatic reveal or external
 OS drag-out. This change still requires those native acceptance checks before
 being treated as release-ready.
+
+The Mac workflow also runs `scripts/test-drop-shelf-native.sh` on macOS 15 and
+26. It posts native mouse input on the isolated runner, drags generated files,
+folders and application bundles from real Finder, checks automatic reveal and
+successful retention, then closes the shelf. Passing a built `.app` path tests
+the actual packaged application in a separate process and requires dragging the
+stored items back out to another process with their originals unchanged. The
+packaged check runs after the community build. Neither mode calls destination
+callbacks to simulate a successful drop. Missing input/accessibility authorization
+fails the test without changing macOS privacy settings. This does not cover
+multiple physical displays or native Windows Explorer drag negotiation.

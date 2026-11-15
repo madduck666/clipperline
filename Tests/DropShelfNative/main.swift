@@ -135,8 +135,12 @@ func L(_ key: String) -> String { key }
     }
     func finderItemPoint(in element: AXUIElement, name: String, budget: inout Int) -> CGPoint? {
         guard budget > 0 else { return nil }; budget -= 1
+        // Finder commonly hides an application's .app extension in its label.
+        // Fixture names are unique even when their extension is hidden.
+        let labels: Set<String> = [name, (name as NSString).deletingPathExtension]
         let named = [kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute].contains { key in
-            (attribute(element, key) as? String) == name
+            guard let label = attribute(element, key) as? String else { return false }
+            return labels.contains(label)
         }
         if named, let position = attribute(element, kAXPositionAttribute), let size = attribute(element, kAXSizeAttribute),
            CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID() {
