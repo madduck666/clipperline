@@ -544,3 +544,9 @@
 "This image could not be opened for markup." = "Bu şəkil işarələmə üçün açıla bilmədi.";
 "Markup supports images up to 80 megapixels." = "İşarələmə 80 meqapiksələ qədər şəkilləri dəstəkləyir.";
 "The marked image could not be rendered." = "İşarələnmiş şəkil hazırlana bilmədi.";
+
+/* Temporary file drop shelf. */
+"Drop shelf" = "Üzən rəf";
+"Drop files here" = "Faylları buraya buraxın";
+"Drag to another window" = "Başqa pəncərəyə sürükləyin";
+"A dropped file is no longer available." = "Buraxılmış fayl artıq mövcud deyil.";

@@ -544,3 +544,9 @@
 "This image could not be opened for markup." = "Impossible d’ouvrir cette image pour la marquer.";
 "Markup supports images up to 80 megapixels." = "Le marquage prend en charge les images jusqu’à 80 mégapixels.";
 "The marked image could not be rendered." = "Impossible de générer l’image annotée.";
+
+/* Temporary file drop shelf. */
+"Drop shelf" = "Étagère flottante";
+"Drop files here" = "Déposez des fichiers ici";
+"Drag to another window" = "Glissez vers une autre fenêtre";
+"A dropped file is no longer available." = "Un fichier déposé n’est plus disponible.";

@@ -45,7 +45,11 @@
       "assets/**/*",
       "search-model-config.json",
       "package.json",
-      "!assets/CLIP/**"
+      "!assets/CLIP/**",
+      "drop-shelf.html",
+      "drop-shelf.css",
+      "drop-shelf.js",
+      "drop-shelf-preload.cjs"
     ],
     "extraResources": [
       {

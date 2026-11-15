@@ -60,6 +60,7 @@ async function main(){
   const nativeFocusPolicy=await application.evaluate(()=>global.__clipboardLineTest.native.selfTestFocusPolicy());assert.equal(nativeFocusPolicy.ok,true);assert.equal(nativeFocusPolicy.passed,12);assert.equal(nativeFocusPolicy.capturePassed,30);check('native IA2 policy rejects readonly/protected/disabled/defunct and bounded BUSY-document capture keeps the first stable editable identity');
   await appIconAcceptance({application,check,output});
   await statusTrayAcceptance({page,application,check,until,output});
+  await require('./drop-shelf-acceptance.cjs')({application,check,until});
   await shelfPerformanceAcceptance({page,application,check,until,output});
   await nativeVideo.runNativeVideo({outputDirectory:path.join(output,'video-native')});check('native Windows MP4/MOV probe, precise trim, decoded audio, cancellation and unsupported-codec rejection preserve original recordings');
   const preferences=await page.evaluate(()=>window.clipboardLine.diagnostics());

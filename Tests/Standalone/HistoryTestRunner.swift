@@ -173,7 +173,11 @@ enum HistoryTestRunner {
         let namedPinWorkflow = NameAndPinWorkflowTests()
         let namedShelfLabel = NamedShelfLabelTests()
         let publicUpdates = PublicUpdateChannelTests()
+        let dropShelf = DropShelfTests()
         let cases: [(String, () throws -> Void)] = [
+            ("testSharedDropShelfContract", dropShelf.testSharedDropShelfContract),
+            ("testDropShelfPlacement", dropShelf.testPlacementAvoidsWindowsAndPointer),
+            ("testDropShelfController", dropShelf.testControllerAcceptsFilesAndClosePreservesOriginals),
             ("testNativeVisibilityKeepsWindowContentAndHitCoordinatesFixed", shelfPresentation.testNativeVisibilityKeepsWindowContentAndHitCoordinatesFixed),
             ("testRapidVisibilityReversalCannotRunAnEarlierCloseCompletion", shelfPresentation.testRapidVisibilityReversalCannotRunAnEarlierCloseCompletion),
             ("testMixedBatchRestoresOriginalShelfFlagsContentOrganizationAndFiles", libraryTrashUndoTests.testMixedBatchRestoresOriginalShelfFlagsContentOrganizationAndFiles),

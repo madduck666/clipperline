@@ -544,3 +544,9 @@
 "This image could not be opened for markup." = "Bu görsel işaretleme için açılamadı.";
 "Markup supports images up to 80 megapixels." = "İşaretleme en fazla 80 megapiksellik görselleri destekler.";
 "The marked image could not be rendered." = "İşaretlenen görsel oluşturulamadı.";
+
+/* Temporary file drop shelf. */
+"Drop shelf" = "Yüzen raf";
+"Drop files here" = "Dosyaları buraya bırak";
+"Drag to another window" = "Başka bir pencereye sürükle";
+"A dropped file is no longer available." = "Bırakılan bir dosya artık mevcut değil.";

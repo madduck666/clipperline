@@ -202,3 +202,36 @@ The genuine Windows upgrade baseline is 1.7.7/build70: 545777945 bytes, SHA256
 source `1c93c163e7e45d102d13c1077dd8baa969eab8ba`. Stage
 `clipboardline-1.7.8-build78`, then publish `windows-1.7.8-build71` with that
 verified counterpart. Latest must contain both signed 1.7.8 feeds and packages.
+
+## Temporary floating drop shelf
+
+Dragging a local file, folder or application bundle opens a separate small shelf
+without activating the application. It chooses space inside the current display's
+work area, scoring visible-window overlap and keeping clear of the pointer. If
+all space is occupied it uses the least obstructed candidate. Once visible it
+stays in place so subsequent drops do not chase a moving target.
+
+Drop up to 100 local items, including folders and application bundles. Repeated
+paths are deduplicated. Drag the contents into another application or folder;
+the Mac source advertises copy. Close clears temporary references, never the
+original files. Empty shelves disappear after a cancelled drag. Contents are
+session-only and do not enter clipboard history, Library, persistence or indexing.
+The header moves the shelf manually. File promises and network URLs are outside
+this initial scope; Windows UNC/device paths are rejected.
+
+Mac activation observes the file drag pasteboard while the mouse button is held;
+Windows activation observes native `EVENT_SYSTEM_DRAGDROPSTART/END` notifications
+in a separate message-loop helper. Native acceptance must verify those events for
+actual Finder/Explorer drags, including application bundles, multiple displays,
+cancellation and dragging back out. A source that does not emit Windows drag
+notifications cannot trigger automatic reveal through this observer.
+
+`dropShelfCases` in the shelf contract executes against both production stores
+using actual temporary files. `DropShelfTests` covers the Mac controller and
+placement; Windows `drop-shelf*.test.cjs` additionally tests IPC trust, lifetime
+and asynchronous icon completion. `drop-shelf-browser.cjs --browser <chromium>`
+executes the shipped UI with synthetic IPC. The native Electron suite includes
+`drop-shelf-acceptance.cjs` for real File/preload/drop handling. Synthetic IPC or
+programmatic drop injection does not prove native automatic reveal or external
+OS drag-out. This change still requires those native acceptance checks before
+being treated as release-ready.

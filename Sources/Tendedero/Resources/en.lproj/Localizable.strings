@@ -544,3 +544,9 @@
 "This image could not be opened for markup." = "This image could not be opened for markup.";
 "Markup supports images up to 80 megapixels." = "Markup supports images up to 80 megapixels.";
 "The marked image could not be rendered." = "The marked image could not be rendered.";
+
+/* Temporary file drop shelf. */
+"Drop shelf" = "Drop shelf";
+"Drop files here" = "Drop files here";
+"Drag to another window" = "Drag to another window";
+"A dropped file is no longer available." = "A dropped file is no longer available.";

@@ -106,6 +106,12 @@
         "behavior": "While the shelves are shown, every visible shelf row draws a smoked translucent backdrop behind its rope and cards (black, darkest at the top and a quarter lighter at the bottom, inset with rounded corners) so cards stand out from a busy desktop. The backdrop is display only: it never becomes a pointer target, so a click on it does exactly what a click on empty shelf space does on that platform and never selects, copies or pins an item.",
         "macos": "LineView draws ShelfBackdrop beneath each row with hit testing off and no hit rectangle; Line.acceptsPointer keeps the panel ignoring the pointer there, so the click reaches the app or desktop underneath. Settings → General offers a Backdrop darkness slider from 0% (off) to 90%, default 50%, remembered across launches. ShelfPresentationTests.testShelfBackdropLetsClicksReachTheDesktopWhileCardsStillTakeThem and testShelfBackdropDarknessIsAdjustableAndRemembered cover it.",
         "windows": "shelfRow() in renderer.js renders an aria-hidden .shelf-backdrop first in each row with pointer-events: none at a fixed 40% to 30% darkness; a click there reaches the same empty-space handler, which closes the shelves. renderer-ui.test.cjs runs the display-only backdrop scenario. The darkness slider is not yet on Windows: this fork is maintained for macOS only until Windows work resumes."
+      },
+      {
+        "id": "temporary-file-drop-shelf",
+        "behavior": "An external file drag reveals a non-activating floating shelf in the least obstructed available screen area, avoiding the cursor. Drop local files, folders or application bundles, append without duplicates, drag references back out, and dismiss without deleting originals. Empty shelves hide after a cancelled drag. References last only for the app session.",
+        "macos": "DropShelfController observes the file drag pasteboard while the mouse is held; DropShelfView receives file URLs and starts native copy drags. DropShelfTests executes the shared dropShelfCases with real temporary files.",
+        "windows": "DropShelfWindow observes native system drag/drop events, receives File paths through isolated preload webUtils and starts Electron native file drags. drop-shelf.test.cjs executes shared dropShelfCases; drop-shelf-acceptance.cjs exercises actual Electron drop IPC."
       }
     ]
   },
@@ -1730,6 +1736,47 @@
             "effects": []
           }
         }
+      ]
+    }
+  ],
+  "dropShelfCases": [
+    {
+      "action": "add",
+      "files": [
+        "document.txt",
+        "Folder",
+        "Sample.app"
+      ],
+      "expected": [
+        "document.txt",
+        "Folder",
+        "Sample.app"
+      ]
+    },
+    {
+      "action": "add",
+      "files": [
+        "document.txt",
+        "picture.png"
+      ],
+      "expected": [
+        "document.txt",
+        "Folder",
+        "Sample.app",
+        "picture.png"
+      ]
+    },
+    {
+      "action": "clear",
+      "expected": []
+    },
+    {
+      "action": "add",
+      "files": [
+        "Folder"
+      ],
+      "expected": [
+        "Folder"
       ]
     }
   ]

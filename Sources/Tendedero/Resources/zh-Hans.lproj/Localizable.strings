@@ -544,3 +544,9 @@
 "This image could not be opened for markup." = "无法打开此图像进行标记。";
 "Markup supports images up to 80 megapixels." = "标记功能支持最高 8000 万像素的图像。";
 "The marked image could not be rendered." = "无法渲染已标记的图像。";
+
+/* Temporary file drop shelf. */
+"Drop shelf" = "浮动置物架";
+"Drop files here" = "将文件拖放到此处";
+"Drag to another window" = "拖动到其他窗口";
+"A dropped file is no longer available." = "已放入的文件不再可用。";

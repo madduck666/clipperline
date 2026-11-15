@@ -544,3 +544,9 @@
 "This image could not be opened for markup." = "이 이미지를 마크업용으로 열 수 없습니다.";
 "Markup supports images up to 80 megapixels." = "마크업은 최대 8천만 화소의 이미지를 지원합니다.";
 "The marked image could not be rendered." = "마크업한 이미지를 렌더링할 수 없습니다.";
+
+/* Temporary file drop shelf. */
+"Drop shelf" = "떠 있는 선반";
+"Drop files here" = "여기에 파일 놓기";
+"Drag to another window" = "다른 창으로 드래그";
+"A dropped file is no longer available." = "놓은 파일을 더 이상 사용할 수 없습니다.";

@@ -544,3 +544,9 @@
 "This image could not be opened for markup." = "この画像をマークアップ用に開けませんでした。";
 "Markup supports images up to 80 megapixels." = "マークアップは最大8,000万画素の画像に対応しています。";
 "The marked image could not be rendered." = "マークアップした画像をレンダリングできませんでした。";
+
+/* Temporary file drop shelf. */
+"Drop shelf" = "フローティングシェルフ";
+"Drop files here" = "ここにファイルをドロップ";
+"Drag to another window" = "別のウインドウにドラッグ";
+"A dropped file is no longer available." = "ドロップしたファイルが見つかりません。";

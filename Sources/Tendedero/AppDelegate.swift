@@ -133,6 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         onTextPreview: { [weak self] in self?.showTextPreview($0) }, onLinkPreview: { [weak self] in self?.showLinkPreview($0) },
         onCopyAndClose: { [weak self] in self?.copyAndDismissShelf() })
     private var cancellables = Set<AnyCancellable>()
+    private var dropShelf: DropShelfController?
     private var mouseTimer: Timer?
     private var historyTimer: Timer?
     private var imageSearch: LibraryImageSearch?
@@ -223,6 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                configuration.createsNewApplicationInstance = true
                NSWorkspace.shared.openApplication(at: target, configuration: configuration) { _, _ in }
            }) { return }
+        if watchesFiles { let shelf = DropShelfController(); shelf.start(); dropShelf = shelf }
         EditingMenu.install(onSettings: { [weak self] in self?.showSettings() })
         if startupError != nil { setUpStatusItem(); DispatchQueue.main.async { [weak self] in self?.showStartupFailure() }; return }
         let host = ShelfHostingView(rootView: LineView(line: line))
@@ -374,6 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        dropShelf?.stop()
         appUpdates.stopAutomaticChecks()
         if let updateWakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(updateWakeObserver) }
         directPaste.cancel(); imageTextCopy?.cancel()
