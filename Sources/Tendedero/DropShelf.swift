@@ -48,6 +48,27 @@ import QuickLookThumbnailing
     }
 }
 
+/// The panel can appear after an external drag has already begun. Register the
+/// window itself as a destination as well as its view, so AppKit has a fallback
+/// across the nonactivating panel's frame and material-backed surface.
+@MainActor final class DropShelfPanel: NSPanel {
+    private var destination: DropShelfView? { contentView as? DropShelfView }
+    init(content: DropShelfView) {
+        super.init(contentRect: content.bounds, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        contentView = content; isOpaque = false; backgroundColor = .clear
+        hasShadow = true; level = .floating; hidesOnDeactivate = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        isReleasedWhenClosed = false; ignoresMouseEvents = false
+        registerForDraggedTypes([.fileURL])
+    }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { destination?.draggingEntered(sender) ?? [] }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { destination?.draggingUpdated(sender) ?? [] }
+    override func draggingExited(_ sender: NSDraggingInfo?) { destination?.draggingExited(sender) }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { destination?.prepareForDragOperation(sender) ?? false }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { destination?.performDragOperation(sender) ?? false }
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) { destination?.concludeDragOperation(sender) }
+}
+
 @MainActor final class DropShelfController {
     let model = DropShelf()
     private var timer: Timer?
@@ -62,14 +83,7 @@ import QuickLookThumbnailing
         view.dragFiles = { [weak self] in try self?.model.dragFiles() ?? [] }
         return view
     }()
-    private lazy var panel: NSPanel = {
-        let panel = NSPanel(contentRect: view.bounds, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.contentView = view; panel.isOpaque = false; panel.backgroundColor = .clear
-        panel.hasShadow = true; panel.level = .floating; panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isReleasedWhenClosed = false
-        return panel
-    }()
+    private lazy var panel = DropShelfPanel(content: view)
     func start() {
         guard timer == nil else { return }
         lastChange = NSPasteboard(name: .drag).changeCount
@@ -170,6 +184,11 @@ import QuickLookThumbnailing
     @objc private func closeShelf() { onClose?() }
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        // Behind-window blur is composed by WindowServer. Give the entire
+        // rounded surface real backing pixels too, so blank areas of this
+        // transparent window do not become pointer/drag pass-through holes.
+        NSColor.windowBackgroundColor.withAlphaComponent(0.08).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 25, yRadius: 25).fill()
         NSColor.white.withAlphaComponent(0.3).setFill()
         NSBezierPath(roundedRect: NSRect(x: bounds.midX - 18, y: bounds.height - 13, width: 36, height: 4), xRadius: 2, yRadius: 2).fill()
         if hovering { NSColor.controlAccentColor.withAlphaComponent(0.2).setFill(); bounds.fill() }
@@ -198,9 +217,8 @@ import QuickLookThumbnailing
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
     override func draggingExited(_ sender: NSDraggingInfo?) { hovering = false; needsDisplay = true }
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        // AppKit asks the destination to approve the drop after mouse-up and
-        // before performDragOperation. Advertising .copy during hover alone
-        // does not complete that handshake for the visual-effect view.
+        // Revalidate at mouse-up as well as during hover, before importing.
+        // The source may have changed its payload or permitted operations.
         dropURLs(from: sender) != nil
     }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {

@@ -32,7 +32,7 @@ import XCTest
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let file = root.appendingPathComponent("Synthetic document.txt"), folder = root.appendingPathComponent("Synthetic folder")
+        let file = root.appendingPathComponent("Synthetic document.txt"), folder = root.appendingPathComponent("Synthetic folder", isDirectory: true)
         try Data("original".utf8).write(to: file)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let board = NSPasteboard(name: .init("drop-shelf-test-\(UUID().uuidString)"))
@@ -41,8 +41,7 @@ import XCTest
         let info = ShelfDropInfo(board: board)
         let controller = DropShelfController(); defer { controller.stop() }
         let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
-        let panel = NSPanel(contentRect: view.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.isReleasedWhenClosed = false; panel.contentView = view
+        let panel = DropShelfPanel(content: view)
         defer { panel.close() }
         info.draggingDestinationWindow = panel
         var drops = 0
@@ -52,8 +51,6 @@ import XCTest
         XCTAssertEqual(view.draggingEntered(info), .copy)
         XCTAssertEqual(view.draggingUpdated(info), .copy)
         XCTAssertTrue(controller.model.files.isEmpty, "Hover must not import the payload")
-        let defaultPreparation = NSVisualEffectView(frame: view.frame).prepareForDragOperation(info)
-        print("::notice title=Native drop destination::Visual-effect default approval: \(defaultPreparation); file payload count: \(board.pasteboardItems?.count ?? 0)")
         let prepared = view.prepareForDragOperation(info)
         XCTAssertTrue(prepared, "A valid drop must pass AppKit's pre-drop approval, not bounce back to Finder")
         if prepared { XCTAssertTrue(view.performDragOperation(info)) }
@@ -61,8 +58,36 @@ import XCTest
         XCTAssertEqual(drops, 1)
         XCTAssertEqual(try controller.model.dragFiles(), [file, folder])
         controller.dismiss()
+        // AppKit may route the drag to the window when a nonactivating panel
+        // appears during an external drag. That path must perform the same drop.
+        XCTAssertFalse(panel.ignoresMouseEvents)
+        XCTAssertEqual(panel.draggingEntered(info), .copy)
+        XCTAssertEqual(panel.draggingUpdated(info), .copy)
+        XCTAssertTrue(panel.prepareForDragOperation(info))
+        XCTAssertTrue(panel.performDragOperation(info))
+        panel.concludeDragOperation(info)
+        XCTAssertEqual(drops, 2)
+        XCTAssertEqual(try controller.model.dragFiles(), [file, folder])
+        controller.dismiss()
         XCTAssertEqual(try String(contentsOf: file), "original")
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    func testBlankDropSurfaceHasBackingPixelsForWindowServerHitTesting() throws {
+        _ = NSApplication.shared
+        let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 216, pixelsHigh: 228, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSColor.clear.setFill(); view.bounds.fill(using: .copy)
+        view.draw(view.bounds)
+        // Empty areas away from the icon, text and buttons must still have
+        // pixels; a material rendered behind the window is not sufficient.
+        for point in [(20, 70), (195, 70), (20, 150), (195, 150)] {
+            let color = try XCTUnwrap(bitmap.colorAt(x: point.0, y: point.1))
+            XCTAssertGreaterThan(color.alphaComponent, 0.01)
+        }
     }
 
     func testDropHandshakeRejectsChangedPayloadAndUnsafeOperations() throws {
