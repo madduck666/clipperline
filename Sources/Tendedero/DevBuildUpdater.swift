@@ -48,26 +48,44 @@ final class DevBuildUpdater: ObservableObject {
     @Published private(set) var availableBuild: String?
     @Published private(set) var busy = false
 
-    init(info: [String: Any]?) {
+    typealias Fetch = (URLRequest) async throws -> (Data, URLResponse)
+    private let fetch: Fetch
+
+    init(info: [String: Any]?, fetch: Fetch? = nil) {
         configuration = Self.configuration(from: info)
+        self.fetch = fetch ?? { request in
+            let settings = URLSessionConfiguration.ephemeral
+            settings.urlCache = nil
+            settings.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            let session = URLSession(configuration: settings)
+            defer { session.finishTasksAndInvalidate() }
+            return try await session.data(for: request)
+        }
     }
 
     var isActive: Bool { configuration != nil }
     var installedShortBuild: String { configuration.map { String($0.build.prefix(7)) } ?? "" }
 
-    private var latestURL: URL? {
-        configuration.flatMap { URL(string: "https://github.com/\($0.repository)/releases/download/dev-latest/ClipBoardLine-Dev-build.txt") }
+    private func latestRequest() -> URLRequest? {
+        guard let configuration,
+              var url = URLComponents(string: "https://github.com/\(configuration.repository)/releases/download/dev-latest/ClipBoardLine-Dev-build.txt") else { return nil }
+        // dev-latest is replaced in place. A new URL also avoids cached GitHub
+        // redirects to an older release asset, not just cached response bodies.
+        url.queryItems = [URLQueryItem(name: "check", value: UUID().uuidString)]
+        guard let address = url.url else { return nil }
+        var request = URLRequest(url: address, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 30)
+        request.setValue("no-cache, no-store, max-age=0", forHTTPHeaderField: "Cache-Control")
+        return request
     }
 
     func check() {
-        guard let configuration, let url = latestURL, !busy else { return }
+        guard let configuration, !busy, let request = latestRequest() else { return }
         busy = true; error = nil; status = L("Checking for updates…")
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 30)
-        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        let fetch = self.fetch
         Task { [weak self] in
             let latest: String?
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await fetch(request)
                 latest = (response as? HTTPURLResponse)?.statusCode == 200 ? Self.publishedBuild(data) : nil
             } catch { latest = nil }
             guard let self else { return }

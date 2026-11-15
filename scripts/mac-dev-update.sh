@@ -113,8 +113,21 @@ sign_app() {
   codesign --verify --deep --strict "$app"
 }
 
+fresh_asset_url() {
+  local asset="$1" nonce
+  nonce="$(/usr/bin/openssl rand -hex 16)"
+  printf '%s/%s?check=%s\n' "$BASE" "$asset" "$nonce"
+}
+
 latest_build() {
-  curl -fsSL "$BASE/ClipBoardLine-Dev-build.txt" | tr -d '[:space:]'
+  curl -fsSL -H 'Cache-Control: no-cache' "$(fresh_asset_url ClipBoardLine-Dev-build.txt)" | tr -d '[:space:]'
+}
+
+verify_downloaded_build() {
+  local app="$1" expected="$2" actual repository
+  actual="$(/usr/libexec/PlistBuddy -c 'Print :ClipBoardLineDevBuild' "$app/Contents/Info.plist")" || return 1
+  repository="$(/usr/libexec/PlistBuddy -c 'Print :ClipBoardLineDevRepository' "$app/Contents/Info.plist")" || return 1
+  [[ "$actual" = "$expected" && "$repository" = "$REPO" ]]
 }
 
 # Downloads and signs the newest build into the staging folder. Nothing in
@@ -123,13 +136,17 @@ prepare() {
   local latest
   latest="$(latest_build)" || fail "dev-latest sürümü indirilemedi. İnternet bağlantını kontrol et."
   [[ "$latest" =~ ^[0-9a-f]{40}$ ]] || fail "dev-latest sürüm bilgisi okunamadı."
-  ensure_identity
   local work
   work="$(mktemp -d)"
   say "Yeni sürüm indiriliyor (${latest:0:7})"
-  curl -fL --progress-bar "$BASE/$APP_NAME.zip" -o "$work/app.zip"
+  curl -fL --progress-bar -H 'Cache-Control: no-cache' "$(fresh_asset_url "$APP_NAME.zip")" -o "$work/app.zip"
   ditto -x -k "$work/app.zip" "$work"
   [ -d "$work/$APP_NAME.app" ] || fail "İndirilen dosyada uygulama bulunamadı."
+  if ! verify_downloaded_build "$work/$APP_NAME.app" "$latest"; then
+    rm -rf "$work"
+    fail "İndirilen paket beklenen sürümle eşleşmiyor. Mevcut uygulaman korunuyor; güncellemeyi tekrar dene."
+  fi
+  ensure_identity
   say "Uygulama bu Mac'in imzasıyla imzalanıyor"
   sign_app "$work/$APP_NAME.app"
   xattr -dr com.apple.quarantine "$work/$APP_NAME.app" 2>/dev/null || true
@@ -230,4 +247,6 @@ main() {
 
 # The whole script is read before anything runs, so nothing it starts can
 # consume the rest of a piped "curl ... | bash".
-main "$@" </dev/null
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" = "$0" ]]; then
+  main "$@" </dev/null
+fi
