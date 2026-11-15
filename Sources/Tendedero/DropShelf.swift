@@ -51,7 +51,7 @@ import QuickLookThumbnailing
 /// The panel can appear after an external drag has already begun. Register the
 /// window itself as a destination as well as its view, so AppKit has a fallback
 /// across the nonactivating panel's frame and material-backed surface.
-@MainActor final class DropShelfPanel: NSPanel {
+@MainActor final class DropShelfPanel: NSPanel, NSDraggingDestination {
     private var destination: DropShelfView? { contentView as? DropShelfView }
     init(content: DropShelfView) {
         super.init(contentRect: content.bounds, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -61,12 +61,12 @@ import QuickLookThumbnailing
         isReleasedWhenClosed = false; ignoresMouseEvents = false
         registerForDraggedTypes([.fileURL])
     }
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { destination?.draggingEntered(sender) ?? [] }
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { destination?.draggingUpdated(sender) ?? [] }
-    override func draggingExited(_ sender: NSDraggingInfo?) { destination?.draggingExited(sender) }
-    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { destination?.prepareForDragOperation(sender) ?? false }
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { destination?.performDragOperation(sender) ?? false }
-    override func concludeDragOperation(_ sender: NSDraggingInfo?) { destination?.concludeDragOperation(sender) }
+    func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { destination?.draggingEntered(sender) ?? [] }
+    func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { destination?.draggingUpdated(sender) ?? [] }
+    func draggingExited(_ sender: NSDraggingInfo?) { destination?.draggingExited(sender) }
+    func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { destination?.prepareForDragOperation(sender) ?? false }
+    func performDragOperation(_ sender: NSDraggingInfo) -> Bool { destination?.performDragOperation(sender) ?? false }
+    func concludeDragOperation(_ sender: NSDraggingInfo?) { destination?.concludeDragOperation(sender) }
 }
 
 @MainActor final class DropShelfController {
