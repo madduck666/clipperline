@@ -57,7 +57,7 @@ private struct TextCard: View {
             }
                 .frame(width: Layout.cardWidth - 20, height: 78, alignment: .topLeading)
                 .padding(.horizontal, 10).padding(.top, 24).padding(.bottom, 10)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Frame.radius))
+                .background(CardSurface.regular(settled: renderState.settled), in: RoundedRectangle(cornerRadius: Frame.radius))
                 .background(renderState.theme.wash(.texts), in: RoundedRectangle(cornerRadius: Frame.radius))
                 .overlay(RoundedRectangle(cornerRadius: Frame.radius).strokeBorder(texts.selectedIDs.contains(entry.id) ? Color.accentColor : .clear, lineWidth: 3))
                 .overlay(alignment: .topLeading) {
@@ -69,7 +69,7 @@ private struct TextCard: View {
                 }
                 .overlay(alignment: .topTrailing) { FavoriteBadge(pinned: entry.pinned, visible: (hovering || texts.focusedID == entry.id) && !dragging) }
                 .overlay(TextGrabArea(entry: entry, line: line, texts: texts))
-                .overlay(alignment: .bottomLeading) { QuickSelectionBadge(number: quickNumber) }
+                .overlay(alignment: .bottomLeading) { QuickSelectionBadge(number: quickNumber, settled: renderState.settled) }
                 .overlay(alignment: .bottom) {
                     if texts.copiedIDs.contains(entry.id) { CopyBadge(title: L("Text copied")) }
                 }

@@ -9,6 +9,7 @@ struct ShelfRenderState: Equatable {
     let pinnedHint: String
     let quickIDs: [UUID]
     let draggingID: UUID?
+    let settled: Bool
 
     @MainActor init(line: Line, shelf: Shelf) {
         theme = line.theme
@@ -17,6 +18,7 @@ struct ShelfRenderState: Equatable {
         pinnedHint = line.keyboardBindings.title(.pinnedOnly)
         quickIDs = line.activeShelf == shelf && line.searchEditingShelf == nil ? line.quickSelectionIDs : []
         draggingID = shelf == .texts ? line.draggingID : nil
+        settled = line.shelfSettled
     }
 }
 

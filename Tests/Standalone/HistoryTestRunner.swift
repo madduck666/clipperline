@@ -216,6 +216,7 @@ enum HistoryTestRunner {
             ("testShelfBackdropDarknessIsAdjustableAndRemembered", shelfPresentation.testShelfBackdropDarknessIsAdjustableAndRemembered),
             ("testSharedTextIdentitiesAgainstLibraryAndLegacyHistory", textIdentityParity.testSharedTextIdentitiesAgainstLibraryAndLegacyHistory),
             ("testRepeatedThreeShelfOpenCloseLeavesInactiveRowsQuietAndRestoresSingleSelection", shelfPerformance.testRepeatedThreeShelfOpenCloseLeavesInactiveRowsQuietAndRestoresSingleSelection),
+            ("testSettlingTheLineRedrawsEveryRowOnceWithoutTouchingTheirModels", shelfPerformance.testSettlingTheLineRedrawsEveryRowOnceWithoutTouchingTheirModels),
             ("testClosingActiveSearchClearsItBeforeFreshOpenChoosesImages", shelfPerformance.testClosingActiveSearchClearsItBeforeFreshOpenChoosesImages),
             ("testRepeatedScrollFocusDoesNotInvalidateAllRowsAndExplicitFocusStillWorks", shelfPerformance.testRepeatedScrollFocusDoesNotInvalidateAllRowsAndExplicitFocusStillWorks),
             ("testEveryOverflowingRowAcceptsGapScrollingAcrossAllPresentations", shelfPerformance.testEveryOverflowingRowAcceptsGapScrollingAcrossAllPresentations),

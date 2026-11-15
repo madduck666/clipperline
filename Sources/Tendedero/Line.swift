@@ -69,6 +69,12 @@ final class Line: ObservableObject {
     @Published private(set) var size: Layout.Size = .medium
     @Published private(set) var theme: ShelfTheme = .soft
     func setTheme(_ value: ShelfTheme) { theme = value; defaults.set(value.rawValue, forKey: "shelfTheme") }
+    /// Whether the line rests fully open. While it slides in or out, and
+    /// while it is tucked away, cards draw a flat fill instead of live
+    /// blurred glass: dozens of moving blurs re-sampled on every frame are
+    /// what made the drop stutter. The glass returns once the line rests.
+    /// Mounted without the app (previews, tests) the line counts as resting.
+    @Published var shelfSettled = true
     /// How dark the band behind each shelf row is, from Settings.
     @Published private(set) var backdropDarkness = ShelfBackdrop.defaultDarkness
     func setBackdropDarkness(_ value: Double) {
@@ -1157,7 +1163,7 @@ final class Line: ObservableObject {
             guard let self else { return }
             // Tucked away, nobody sees the sway; a gust would still re-render
             // every view that watches the line.
-            if self.revealed && !self.items.isEmpty && self.draggingID == nil { self.gust += 1 }
+            if self.revealed && self.shelfSettled && !self.items.isEmpty && self.draggingID == nil { self.gust += 1 }
             self.scheduleGust()
         }
     }

@@ -61,13 +61,13 @@ private struct LinkCard: View {
                 Text(entry.displayTitle).font(.system(size: 10 * Layout.scale, weight: .semibold)).lineLimit(2).frame(height: 26 * Layout.scale, alignment: .topLeading)
                 Text(entry.author ?? entry.linkURL?.host ?? L("Link")).font(.system(size: 9 * Layout.scale)).foregroundStyle(.secondary).lineLimit(1)
             }.padding(8 * Layout.scale).padding(.top, 12 * Layout.scale).frame(width: Layout.cardWidth, alignment: .leading)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Frame.radius))
+                .background(CardSurface.regular(settled: renderState.settled), in: RoundedRectangle(cornerRadius: Frame.radius))
                 .background(renderState.theme.wash(.links), in: RoundedRectangle(cornerRadius: Frame.radius))
                 .overlay(RoundedRectangle(cornerRadius: Frame.radius).strokeBorder(links.selectedIDs.contains(entry.id) ? Color.accentColor : .clear, lineWidth: 3))
                 .overlay(alignment: .topLeading) { if hovering { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).frame(width: 20, height: 20).glassFrame(circle: true).padding(3).allowsHitTesting(false).transition(.opacity) } }
                 .overlay(alignment: .topTrailing) { FavoriteBadge(pinned: entry.favorite, visible: hovering || links.focusedID == entry.id) }
                 .overlay(LinkGrabArea(entry: entry, line: line, links: links))
-                .overlay(alignment: .bottomLeading) { QuickSelectionBadge(number: quickNumber) }
+                .overlay(alignment: .bottomLeading) { QuickSelectionBadge(number: quickNumber, settled: renderState.settled) }
                 .overlay(alignment: .bottom) { if links.copiedIDs.contains(entry.id) { CopyBadge(title: L("Link copied")) } }
                 .shadow(color: .black.opacity(0.18), radius: hovering ? 14 : 10, y: 5)
                 .onHover { hovering = $0 }

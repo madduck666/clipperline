@@ -228,6 +228,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let host = ShelfHostingView(rootView: LineView(line: line))
         host.sizingOptions = []
         panel = LinePanel(content: host)
+        // Tucked away until the first reveal: cards wait in their flat fill.
+        line.shelfSettled = false
         panel.onBeforeMouseKeyFocus = { [weak self] in self?.capturePasteTarget() }
         panel.searchEditorTarget = { [weak line] in
             guard let line, let shelf = line.searchEditingShelf else { return nil }
@@ -679,6 +681,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pointerFocus = false
             pinned = false
             peekUntil = .distantPast
+            // Flat cards for the way out, in the same commit as the slide.
+            if line.shelfSettled { line.shelfSettled = false }
             panel.ignoresMouseEvents = true
             let hadFocus = panel.isKeyWindow
             panel.keyboardFocusAllowed = false
@@ -690,8 +694,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         panel.setShelfRevealed(on) { [weak self] in
             guard let self, on == self.isRevealed else { return }
-            if on { self.updateMousePassThrough(NSEvent.mouseLocation) }
-            else { self.panel.orderOut(nil) }
+            if on {
+                // Resting: the glass comes back, once, after the last frame.
+                self.line.shelfSettled = true
+                self.updateMousePassThrough(NSEvent.mouseLocation)
+            } else { self.panel.orderOut(nil) }
         }
         // Install the hidden-to-open transform before exposing the window;
         // otherwise its first committed frame can flash fully open.
@@ -871,7 +878,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// mouse while the cursor is over a photo. Everywhere else, clicks go to
     /// whatever is underneath.
     private func updateMousePassThrough(_ mouse: NSPoint) {
-        guard !panel.isShelfTransitioning else { panel.ignoresMouseEvents = true; return }
+        // Already set when the slide began; repeating it on every tick was a
+        // window server call thirty times a second during the animation.
+        guard !panel.isShelfTransitioning else {
+            if !panel.ignoresMouseEvents { panel.ignoresMouseEvents = true }
+            return
+        }
         guard !GrabView.isDragging else { return }
         let local = panel.convertPoint(fromScreen: mouse)
         let flipped = CGPoint(x: local.x, y: panel.frame.height - local.y)

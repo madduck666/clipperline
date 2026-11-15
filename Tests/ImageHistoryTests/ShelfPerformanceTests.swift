@@ -112,6 +112,33 @@ import XCTest
         XCTAssertEqual(line.links.displayEntries.count, 12)
     }
 
+    func testSettlingTheLineRedrawsEveryRowOnceWithoutTouchingTheirModels() throws {
+        let f = try SyntheticFixture(); defer { f.cleanup() }
+        let store = try LibraryStore(defaults: f.defaults, inbox: f.inbox, now: { f.date })
+        _ = try store.captureImage(f.image())
+        _ = try store.captureText("Settle text")
+        _ = try store.captureLink(try XCTUnwrap(URL(string: "https://example.com/settle")))
+        let line = fixtureLine(f, store: store)
+        line.setPresentation(.all, requestFocus: false)
+        XCTAssertTrue(line.shelfSettled, "Mounted without the app, the line counts as resting and keeps its glass")
+        var lineChanges = 0, rowModelChanges = 0
+        let own = line.objectWillChange.sink { lineChanges += 1 }
+        let text = line.texts.objectWillChange.sink { rowModelChanges += 1 }
+        let link = line.links.objectWillChange.sink { rowModelChanges += 1 }
+        defer { own.cancel(); text.cancel(); link.cancel() }
+        let resting = Shelf.allCases.map { ShelfRenderState(line: line, shelf: $0) }
+        line.shelfSettled = false
+        let moving = Shelf.allCases.map { ShelfRenderState(line: line, shelf: $0) }
+        XCTAssertEqual(lineChanges, 1, "One publish switches every card to its flat fill for the slide")
+        for index in resting.indices {
+            XCTAssertNotEqual(resting[index], moving[index], "Text and link rows redraw too, although they compare render state only")
+        }
+        line.shelfSettled = true
+        XCTAssertEqual(lineChanges, 2)
+        XCTAssertEqual(Shelf.allCases.map { ShelfRenderState(line: line, shelf: $0) }, resting, "Resting again restores the same row state")
+        XCTAssertEqual(rowModelChanges, 0, "The slide never invalidates the text or link histories")
+    }
+
     func testClosingActiveSearchClearsItBeforeFreshOpenChoosesImages() throws {
         let f = try SyntheticFixture(); defer { f.cleanup() }
         let store = try LibraryStore(defaults: f.defaults, inbox: f.inbox, now: { f.date })

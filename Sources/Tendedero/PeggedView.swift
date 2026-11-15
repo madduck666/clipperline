@@ -74,12 +74,12 @@ struct PeggedView: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.primary)
                         .frame(width: 28, height: 28)
-                        .glassFrame(circle: true)
+                        .glassFrame(circle: true, settled: line.shelfSettled)
                         .allowsHitTesting(false)
                 }
             }
             .padding(Frame.inset)
-            .glassFrame(cornerRadius: Frame.radius)
+            .glassFrame(cornerRadius: Frame.radius, settled: line.shelfSettled)
             .background(line.theme.wash(.images), in: RoundedRectangle(cornerRadius: Frame.radius))
             .shadow(color: .black.opacity(hovering ? 0.26 : 0.18), radius: hovering ? 14 : 10, y: hovering ? 8 : 5)
             // Holding presses the photo in slowly, so a long press feels like
@@ -116,11 +116,11 @@ struct PeggedView: View {
                     Text(title)
                         .font(.system(size: 9)).padding(.horizontal, 5).padding(.vertical, 2)
                         .lineLimit(1).truncationMode(.tail).frame(maxWidth: Layout.cardWidth)
-                        .background(.regularMaterial, in: Capsule()).offset(y: 18).allowsHitTesting(false)
+                        .background(CardSurface.regular(settled: line.shelfSettled), in: Capsule()).offset(y: 18).allowsHitTesting(false)
                 }
             }
             .overlay(GrabArea(item: item, line: line))
-            .overlay(alignment: .bottomLeading) { QuickSelectionBadge(number: quickNumber) }
+            .overlay(alignment: .bottomLeading) { QuickSelectionBadge(number: quickNumber, settled: line.shelfSettled) }
             .overlay(alignment: .bottom) {
                 if copied {
                     CopyBadge(title: L("Copied"))
@@ -174,15 +174,27 @@ enum Frame {
     static let inset: CGFloat = 4
 }
 
+/// What a card is made of: live blurred glass while the line rests, and a
+/// flat fill of a similar tone while it moves. One style expression, so the
+/// view keeps its identity when it switches.
+enum CardSurface {
+    static func thin(settled: Bool) -> AnyShapeStyle {
+        settled ? AnyShapeStyle(Material.ultraThin) : AnyShapeStyle(Color(nsColor: .windowBackgroundColor).opacity(0.5))
+    }
+    static func regular(settled: Bool) -> AnyShapeStyle {
+        settled ? AnyShapeStyle(Material.regular) : AnyShapeStyle(Color(nsColor: .windowBackgroundColor).opacity(0.78))
+    }
+}
+
 extension View {
     /// A crisp glass: the system's blurred material with a thin specular
     /// edge, lit from above. No refraction, so the background stays sharp
     /// around the frame instead of bending like gel.
-    func glassFrame(cornerRadius: CGFloat = 0, circle: Bool = false, capsule: Bool = false) -> some View {
+    func glassFrame(cornerRadius: CGFloat = 0, circle: Bool = false, capsule: Bool = false, settled: Bool = true) -> some View {
         let shape: AnyShape = circle ? AnyShape(Circle())
             : capsule ? AnyShape(Capsule())
             : AnyShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        return background(.ultraThinMaterial, in: shape)
+        return background(CardSurface.thin(settled: settled), in: shape)
             .overlay(
                 shape.stroke(
                     LinearGradient(colors: [Color.white.opacity(0.55), Color.white.opacity(0.12)],

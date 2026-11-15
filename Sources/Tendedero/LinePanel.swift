@@ -178,10 +178,23 @@ final class LinePanel: NSPanel {
             animation.fromValue = NSValue(caTransform3D: CATransform3DMakeTranslation(0, current, 0))
             animation.toValue = NSValue(caTransform3D: CATransform3DMakeTranslation(0, target, 0))
             animation.duration = duration
-            animation.beginTime = compositor.layer?.convertTime(CACurrentMediaTime(), from: nil) ?? CACurrentMediaTime()
-            animation.timingFunction = on
-                ? CAMediaTimingFunction(controlPoints: 0.2, 1.12, 0.3, 1)
-                : CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1)
+            if on {
+                // Opening starts when the window server first shows it, not
+                // when it was requested: ordering the window in, taking focus
+                // and the SwiftUI update all land in this same commit, and a
+                // start time stamped before them made the first frames of the
+                // drop disappear. The curve also spreads the drop over more
+                // frames than a hard ease-out, whose first frame covered a
+                // fifth of the way. Its tail is flat, so the timer below
+                // ending slightly early is not visible.
+                animation.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 0.8, 0.3, 1.03)
+            } else {
+                // Closing accelerates out, so it must end exactly with the
+                // timer that orders the window out; its slow start hides any
+                // commit delay.
+                animation.beginTime = compositor.layer?.convertTime(CACurrentMediaTime(), from: nil) ?? CACurrentMediaTime()
+                animation.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1)
+            }
             compositor.layer?.add(animation, forKey: Self.shelfAnimationKey)
         }
         let delay = isShelfTransitioning ? duration : 0
