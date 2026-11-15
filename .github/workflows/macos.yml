@@ -7,6 +7,15 @@ on:
 permissions:
   contents: read
 jobs:
+  native-drop-session:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Native floating shelf drag session
+        run: bash scripts/test-drop-shelf-native.sh
   test-and-community-build:
     runs-on: macos-15
     steps:
@@ -18,8 +27,6 @@ jobs:
           python3 scripts/check-release-version.py --require-windows
           python3 scripts/test-cross-platform-parity.py
           python3 scripts/test-mac-dev-update.py
-      - name: Native floating shelf drag session
-        run: bash scripts/test-drop-shelf-native.sh
       - name: XCTest and actual Mac shared behavior contract
         run: |
           set -o pipefail
@@ -87,7 +94,7 @@ jobs:
   # address for scripts/mac-dev-update.sh. A pre-release, never the Latest
   # release, so it cannot shadow an official signed release.
   publish-dev-build:
-    needs: test-and-community-build
+    needs: [native-drop-session, test-and-community-build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:

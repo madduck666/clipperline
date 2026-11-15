@@ -71,6 +71,7 @@ func L(_ key: String) -> String { key }
         } catch { finish("Could not create synthetic native fixture: \(error)", success: false) }
     }
     func run() async {
+        print("::notice title=Native shelf fixture::Starting AppKit source drag"); fflush(stdout)
         await pause(0.8)
         let start = globalPoint(window.convertPoint(toScreen: NSPoint(x: 100, y: 90)))
         post(.mouseMoved, at: start); await pause(0.1)
@@ -123,6 +124,7 @@ func L(_ key: String) -> String { key }
         // This is a separate application's real file source, not injected drop
         // callbacks. Only the generated test directory is opened in Finder.
         guard AXIsProcessTrusted() else { finish("Native AppKit source passed, but the CI desktop does not authorize Finder accessibility; Finder acceptance is unverified.", success: false); return }
+        print("::notice title=Native shelf fixture::Starting Finder drag"); fflush(stdout)
         shelf.dismiss(); window.orderOut(nil)
         NSWorkspace.shared.activateFileViewerSelecting([source.file])
         await pause(1.5)

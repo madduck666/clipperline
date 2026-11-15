@@ -14,4 +14,17 @@ for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
 PY
   exit 1
 fi
-"$OUT/NativeDropTest"
+python3 - "$OUT/NativeDropTest" <<'PYNATIVE'
+import subprocess, sys
+try:
+    result = subprocess.run([sys.argv[1]], capture_output=True, text=True, timeout=60)
+    print(result.stdout, end='')
+    print(result.stderr, end='', file=sys.stderr)
+    sys.exit(result.returncode)
+except subprocess.TimeoutExpired as error:
+    for output in [error.stdout, error.stderr]:
+        if output:
+            print(output.decode(errors='replace') if isinstance(output, bytes) else output)
+    print('::error title=Native shelf drag::The native fixture exceeded 60 seconds; no successful drag result is claimed.')
+    sys.exit(1)
+PYNATIVE
