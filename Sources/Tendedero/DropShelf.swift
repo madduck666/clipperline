@@ -165,6 +165,13 @@ import QuickLookThumbnailing
     var files: [URL] = []
     var preview: NSImage?
     var message = ""
+    #if DROP_SHELF_NATIVE_DIAGNOSTICS
+    // Fixture-only counters contain phases and operation flags, never file paths.
+    private(set) var nativeEntries = 0
+    private(set) var nativePreparations = 0
+    private(set) var nativeDropAttempts = 0
+    private(set) var nativeSourceMask: NSDragOperation = []
+    #endif
     private var hovering = false
     private var down: NSPoint?
     private let closeButton = NSButton()
@@ -211,17 +218,26 @@ import QuickLookThumbnailing
         return urls
     }
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        #if DROP_SHELF_NATIVE_DIAGNOSTICS
+        nativeEntries += 1; nativeSourceMask = sender.draggingSourceOperationMask
+        #endif
         hovering = dropURLs(from: sender) != nil; needsDisplay = true
         return hovering ? .copy : []
     }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
     override func draggingExited(_ sender: NSDraggingInfo?) { hovering = false; needsDisplay = true }
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        #if DROP_SHELF_NATIVE_DIAGNOSTICS
+        nativePreparations += 1
+        #endif
         // Revalidate at mouse-up as well as during hover, before importing.
         // The source may have changed its payload or permitted operations.
-        dropURLs(from: sender) != nil
+        return dropURLs(from: sender) != nil
     }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        #if DROP_SHELF_NATIVE_DIAGNOSTICS
+        nativeDropAttempts += 1
+        #endif
         hovering = false; needsDisplay = true
         guard let urls = dropURLs(from: sender) else { return false }
         return onDrop?(urls) ?? false

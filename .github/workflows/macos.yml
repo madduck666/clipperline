@@ -18,6 +18,8 @@ jobs:
           python3 scripts/check-release-version.py --require-windows
           python3 scripts/test-cross-platform-parity.py
           python3 scripts/test-mac-dev-update.py
+      - name: Native floating shelf drag session
+        run: bash scripts/test-drop-shelf-native.sh
       - name: XCTest and actual Mac shared behavior contract
         run: |
           set -o pipefail
