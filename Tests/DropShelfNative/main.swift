@@ -119,12 +119,28 @@ func L(_ key: String) -> String { key }
             guard app.bundleIdentifier == expectedIdentifier, app.isFinishedLaunching, !app.isTerminated else {
                 finish("Packaged application did not finish launching: ready=\(app.isFinishedLaunching), terminated=\(app.isTerminated)", success: false); return
             }
-            print("::notice title=Packaged launch::LaunchServices reports the community application ready"); fflush(stdout)
+            print("Packaged launch: LaunchServices reports the target application ready"); fflush(stdout)
+            if expectedIdentifier == "org.clipboardline.community" {
+                // A clean runner gets the normal screenshot-onboarding modal.
+                // Decline it through the real UI; never alter privacy settings.
+                let application = AXUIElementCreateApplication(app.processIdentifier)
+                var declined = false
+                for _ in 0..<30 {
+                    var budget = 1000
+                    if let button = findButton(in: application, title: "Not now", budget: &budget) {
+                        declined = AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
+                        break
+                    }
+                    await pause(0.1)
+                }
+                guard declined else { finish("Could not decline the fresh installation's screenshot setup through its UI", success: false); return }
+                await pause(0.3)
+            }
             await runFinder()
         } catch { finish("LaunchServices could not open the packaged application: \(error)", success: false) }
     }
     func run() async {
-        print("::notice title=Native shelf fixture::Starting AppKit source drag"); fflush(stdout)
+        print("Native shelf fixture: Starting AppKit source drag"); fflush(stdout)
         await pause(0.8)
         let start = globalPoint(window.convertPoint(toScreen: NSPoint(x: 100, y: 90)))
         post(.mouseMoved, at: start); await pause(0.1)
@@ -155,6 +171,15 @@ func L(_ key: String) -> String { key }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
         return value
+    }
+    func findButton(in element: AXUIElement, title: String, budget: inout Int) -> AXUIElement? {
+        guard budget > 0 else { return nil }; budget -= 1
+        if attribute(element, kAXRoleAttribute) as? String == kAXButtonRole,
+           attribute(element, kAXTitleAttribute) as? String == title { return element }
+        for child in attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? [] {
+            if let button = findButton(in: child, title: title, budget: &budget) { return button }
+        }
+        return nil
     }
     func finderItemPoint(in element: AXUIElement, name: String, budget: inout Int) -> CGPoint? {
         guard budget > 0 else { return nil }; budget -= 1
@@ -201,7 +226,7 @@ func L(_ key: String) -> String { key }
         // This is a separate application's real file source, not injected drop
         // callbacks. Only the generated test directory is opened in Finder.
         guard AXIsProcessTrusted() else { finish("Native AppKit source passed, but the CI desktop does not authorize Finder accessibility; Finder acceptance is unverified.", success: false); return }
-        print("::notice title=Native shelf fixture::Starting Finder drag"); fflush(stdout)
+        print("Native shelf fixture: Starting Finder drag"); fflush(stdout)
         shelf.dismiss(); window.orderOut(nil); source.received = []
         NSWorkspace.shared.activateFileViewerSelecting([source.file])
         await pause(1.5)

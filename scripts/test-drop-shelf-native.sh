@@ -20,6 +20,9 @@ try:
     result = subprocess.run(sys.argv[1:], capture_output=True, text=True, timeout=60)
     print(result.stdout, end='')
     print(result.stderr, end='', file=sys.stderr)
+    if result.returncode == 0 and '::notice title=Native shelf drag::All real Finder file, folder and application-bundle drops passed' not in result.stdout:
+        print('::error title=Native shelf drag::The fixture exited before completing all native drop assertions.')
+        sys.exit(1)
     sys.exit(result.returncode)
 except subprocess.TimeoutExpired as error:
     for output in [error.stdout, error.stderr]:
