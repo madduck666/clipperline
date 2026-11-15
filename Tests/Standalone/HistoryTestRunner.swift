@@ -176,6 +176,8 @@ enum HistoryTestRunner {
         let dropShelf = DropShelfTests()
         let cases: [(String, () throws -> Void)] = [
             ("testSharedDropShelfContract", dropShelf.testSharedDropShelfContract),
+            ("testFileDropCompletesAppKitDestinationHandshake", dropShelf.testFileDropCompletesAppKitDestinationHandshake),
+            ("testDropHandshakeRejectsChangedPayloadAndUnsafeOperations", dropShelf.testDropHandshakeRejectsChangedPayloadAndUnsafeOperations),
             ("testDropShelfPlacement", dropShelf.testPlacementAvoidsWindowsAndPointer),
             ("testDropShelfController", dropShelf.testControllerAcceptsFilesAndClosePreservesOriginals),
             ("testNativeVisibilityKeepsWindowContentAndHitCoordinatesFixed", shelfPresentation.testNativeVisibilityKeepsWindowContentAndHitCoordinatesFixed),

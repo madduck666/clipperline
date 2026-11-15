@@ -184,18 +184,31 @@ import QuickLookThumbnailing
         if !message.isEmpty { label(message, y: 10, size: 10, color: .systemOrange) }
         else if files.count > 1 { label("\(files.count)", y: 10, size: 11, color: .secondaryLabelColor) }
     }
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    private func dropURLs(from sender: NSDraggingInfo) -> [URL]? {
         guard (sender.draggingSource as? DropShelfView) !== self,
-              sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]), sender.draggingSourceOperationMask.contains(.copy) else { return [] }
-        hovering = true; needsDisplay = true; return .copy
+              sender.draggingSourceOperationMask.contains(.copy),
+              let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+              !urls.isEmpty, urls.count <= 100 else { return nil }
+        return urls
+    }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        hovering = dropURLs(from: sender) != nil; needsDisplay = true
+        return hovering ? .copy : []
     }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
     override func draggingExited(_ sender: NSDraggingInfo?) { hovering = false; needsDisplay = true }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        // AppKit asks the destination to approve the drop after mouse-up and
+        // before performDragOperation. Advertising .copy during hover alone
+        // does not complete that handshake for the visual-effect view.
+        dropURLs(from: sender) != nil
+    }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         hovering = false; needsDisplay = true
-        guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] else { return false }
+        guard let urls = dropURLs(from: sender) else { return false }
         return onDrop?(urls) ?? false
     }
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) { hovering = false; needsDisplay = true }
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         if point.y > bounds.height - 38 { window?.performDrag(with: event) }
