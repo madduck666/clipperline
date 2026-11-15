@@ -97,8 +97,10 @@ func L(_ key: String) -> String { key }
         finish(summary, success: true)
     }
 }
-let app = NSApplication.shared
-let delegate = NativeHarness()
-app.setActivationPolicy(.regular)
-app.delegate = delegate
-app.run()
+MainActor.assumeIsolated {
+    let app = NSApplication.shared
+    let delegate = NativeHarness()
+    app.setActivationPolicy(.accessory)
+    app.delegate = delegate
+    withExtendedLifetime(delegate) { app.run() }
+}
