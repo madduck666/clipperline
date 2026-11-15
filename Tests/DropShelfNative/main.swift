@@ -10,6 +10,15 @@ func L(_ key: String) -> String { key }
     var operations: NSDragOperation = .copy
     var starts = 0
     var completed: NSDragOperation?
+    var received: [URL] = []
+    override init(frame: NSRect) { super.init(frame: frame); registerForDraggedTypes([.fileURL]) }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        received = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        return !received.isEmpty
+    }
     private var dragging = false
     override func draw(_ dirtyRect: NSRect) {
         NSColor.systemBlue.setFill(); bounds.fill()
@@ -35,10 +44,15 @@ func L(_ key: String) -> String { key }
     var root: URL!
     var lastPoint = CGPoint.zero
     var finished = false
+    var packagedApp: Process?
+    var finderFixtures: [URL] = []
+    var finderTrial = 0
+    var packagedMode: Bool { CommandLine.arguments.count > 1 }
     func finish(_ message: String, success: Bool) {
         guard !finished else { return }; finished = true
         post(.leftMouseUp, at: lastPoint)
         shelf.stop(); window?.orderOut(nil)
+        if let packagedApp, packagedApp.isRunning { packagedApp.terminate() }
         if let root { try? FileManager.default.removeItem(at: root) }
         print("::\(success ? "notice" : "error") title=Native shelf drag::\(message)")
         fflush(stdout)
@@ -61,12 +75,28 @@ func L(_ key: String) -> String { key }
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let file = root.appendingPathComponent("Synthetic.txt")
             try Data("original synthetic file".utf8).write(to: file)
+            let folder = root.appendingPathComponent("Synthetic Folder", isDirectory: true)
+            let bundle = root.appendingPathComponent("Synthetic Application.app", isDirectory: true)
+            for directory in [folder, bundle] {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try Data("original folder contents".utf8).write(to: directory.appendingPathComponent("Marker.txt"))
+            }
+            finderFixtures = [file, folder, bundle]
             source = NativeSource(frame: NSRect(x: 0, y: 0, width: 260, height: 180)); source.file = file
             window = NSWindow(contentRect: NSRect(x: 250, y: 250, width: 260, height: 180), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false; window.title = "Synthetic drag source"; window.contentView = source
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
-            shelf.start()
-            Task { await self.run() }
+            if packagedMode {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("Contents/MacOS/ClipBoardLine")
+                process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+                try process.run(); packagedApp = process
+                window.orderOut(nil)
+                Task { await self.pause(2); await self.runFinder() }
+            } else {
+                shelf.start()
+                Task { await self.run() }
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 50) { self.finish("Native drag timed out", success: false) }
         } catch { finish("Could not create synthetic native fixture: \(error)", success: false) }
     }
@@ -120,12 +150,32 @@ func L(_ key: String) -> String { key }
         }
         return nil
     }
+    func visibleShelfFrame() -> NSRect? {
+        guard let packagedApp else { return NSApp.windows.first { $0.isVisible && $0.contentView is DropShelfView }?.frame }
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        for info in windows {
+            guard (info[kCGWindowOwnerPID as String] as? Int32) == packagedApp.processIdentifier,
+                  let bounds = info[kCGWindowBounds as String] as? [String: Any],
+                  let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+                  abs(rect.width - 216) < 2, abs(rect.height - 228) < 2 else { continue }
+            return NSRect(x: rect.minX, y: (NSScreen.screens.first?.frame.maxY ?? 0) - rect.maxY, width: rect.width, height: rect.height)
+        }
+        return nil
+    }
+    func moveDrag(from start: CGPoint, to end: CGPoint) async {
+        for step in 1...20 {
+            let ratio = Double(step) / 20
+            post(.leftMouseDragged, at: CGPoint(x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio))
+            await pause(0.03)
+        }
+        await pause(0.3); post(.leftMouseUp, at: end); await pause(1)
+    }
     func runFinder() async {
         // This is a separate application's real file source, not injected drop
         // callbacks. Only the generated test directory is opened in Finder.
         guard AXIsProcessTrusted() else { finish("Native AppKit source passed, but the CI desktop does not authorize Finder accessibility; Finder acceptance is unverified.", success: false); return }
         print("::notice title=Native shelf fixture::Starting Finder drag"); fflush(stdout)
-        shelf.dismiss(); window.orderOut(nil)
+        shelf.dismiss(); window.orderOut(nil); source.received = []
         NSWorkspace.shared.activateFileViewerSelecting([source.file])
         await pause(1.5)
         guard let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) else { finish("Finder is unavailable on the CI desktop", success: false); return }
@@ -140,24 +190,57 @@ func L(_ key: String) -> String { key }
         post(.mouseMoved, at: start); await pause(0.1)
         post(.leftMouseDown, at: start); await pause(0.1)
         for step in 1...5 { post(.leftMouseDragged, at: CGPoint(x: start.x + Double(step) * 4, y: start.y)); await pause(0.05) }
-        var panel: NSWindow?
+        var frame: NSRect?
         for _ in 0..<20 {
-            panel = NSApp.windows.first { $0.isVisible && $0.contentView is DropShelfView }
-            if panel != nil { break }; await pause(0.1)
+            frame = visibleShelfFrame()
+            if frame != nil { break }; await pause(0.1)
         }
-        guard let panel, let target = panel.contentView as? DropShelfView else { finish("Finder drag did not automatically reveal the shelf", success: false); return }
-        let beforeEntries = target.nativeEntries, beforePreparations = target.nativePreparations, beforeDrops = target.nativeDropAttempts
-        let end = globalPoint(panel.convertPoint(toScreen: NSPoint(x: 40, y: 70)))
-        for step in 1...20 {
-            let ratio = Double(step) / 20
-            post(.leftMouseDragged, at: CGPoint(x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio))
-            await pause(0.03)
-        }
-        await pause(0.3); post(.leftMouseUp, at: end); await pause(1)
+        guard let frame else { finish("Finder drag did not automatically reveal the shelf", success: false); return }
+        let target = NSApp.windows.first { $0.isVisible && $0.contentView is DropShelfView }?.contentView as? DropShelfView
+        let beforeEntries = target?.nativeEntries ?? 0, beforePreparations = target?.nativePreparations ?? 0, beforeDrops = target?.nativeDropAttempts ?? 0
+        let end = globalPoint(NSPoint(x: frame.minX + 40, y: frame.minY + 70))
+        await moveDrag(from: start, to: end)
+        if packagedMode { await verifyPackagedDragOut(frame: frame); return }
+        guard let target else { finish("Missing local shelf diagnostics", success: false); return }
         let summary = "Finder: entries=\(target.nativeEntries - beforeEntries), prepare=\(target.nativePreparations - beforePreparations), drops=\(target.nativeDropAttempts - beforeDrops), mask=\(target.nativeSourceMask.rawValue), stored=\(shelf.model.files.count)"
-        guard shelf.model.files.map(\.path) == [source.file.path], panel.isVisible else { finish(summary, success: false); return }
-        guard (try? String(contentsOf: source.file)) == "original synthetic file" else { finish("Finder source file changed", success: false); return }
-        finish(summary, success: true)
+        guard shelf.model.files.map(\.path) == [source.file.path], visibleShelfFrame() != nil else { finish(summary, success: false); return }
+        guard originalPreserved() else { finish("Finder source changed", success: false); return }
+        await nextFinderTrial(summary)
+    }
+    func verifyPackagedDragOut(frame: NSRect) async {
+        guard visibleShelfFrame() != nil else { finish("Packaged application rejected the Finder drop; the empty shelf disappeared", success: false); return }
+        let screen = NSScreen.screens.first!.visibleFrame
+        let x = frame.midX < screen.midX ? screen.maxX - 300 : screen.minX + 40
+        window.setFrameOrigin(NSPoint(x: x, y: screen.midY - 90))
+        window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        await pause(0.4)
+        let start = globalPoint(NSPoint(x: frame.midX, y: frame.minY + 130))
+        let end = globalPoint(window.convertPoint(toScreen: NSPoint(x: 100, y: 90)))
+        post(.mouseMoved, at: start); await pause(0.1)
+        post(.leftMouseDown, at: start); await pause(0.1)
+        await moveDrag(from: start, to: end)
+        guard source.received.map(\.path) == [source.file.path] else { finish("Packaged application did not return the stored Finder file through a native drag", success: false); return }
+        guard originalPreserved() else { finish("Packaged application changed the original", success: false); return }
+        await nextFinderTrial("Packaged app: real Finder drop accepted, native drag-out accepted by another process, original preserved")
+    }
+    func originalPreserved() -> Bool {
+        let marker = finderTrial == 0 ? source.file! : source.file.appendingPathComponent("Marker.txt")
+        return (try? String(contentsOf: marker)) == (finderTrial == 0 ? "original synthetic file" : "original folder contents")
+    }
+    func nextFinderTrial(_ summary: String) async {
+        let kind = ["file", "folder", "application bundle"][finderTrial]
+        print("::notice title=Native Finder \(kind)::\(summary)"); fflush(stdout)
+        if packagedMode, let frame = visibleShelfFrame() {
+            let close = globalPoint(NSPoint(x: frame.minX + 23, y: frame.maxY - 23))
+            post(.mouseMoved, at: close); post(.leftMouseDown, at: close)
+            await pause(0.1); post(.leftMouseUp, at: close)
+        } else { shelf.dismiss() }
+        await pause(0.4)
+        guard visibleShelfFrame() == nil else { finish("Closing the shelf did not dismiss it", success: false); return }
+        finderTrial += 1
+        guard finderTrial < finderFixtures.count else { finish("All real Finder file, folder and application-bundle drops passed", success: true); return }
+        source.file = finderFixtures[finderTrial]
+        await runFinder()
     }
 }
 MainActor.assumeIsolated {

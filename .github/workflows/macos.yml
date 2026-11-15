@@ -8,7 +8,11 @@ permissions:
   contents: read
 jobs:
   native-drop-session:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -53,6 +57,8 @@ jobs:
         env:
           CLIPBOARDLINE_DEV_BUILD: ${{ github.sha }}
           CLIPBOARDLINE_DEV_REPOSITORY: ${{ github.repository }}
+      - name: Finder drop and drag-out through the actual packaged application
+        run: bash scripts/test-drop-shelf-native.sh "$PWD/build/Clipperline.app"
       - name: Verify developer signature
         run: codesign --verify --deep --strict "build/Clipperline.app"
       - name: Package the developer application as a disk image and archive

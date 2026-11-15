@@ -14,10 +14,10 @@ for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
 PY
   exit 1
 fi
-python3 - "$OUT/NativeDropTest" <<'PYNATIVE'
+python3 - "$OUT/NativeDropTest" "$@" <<'PYNATIVE'
 import subprocess, sys
 try:
-    result = subprocess.run([sys.argv[1]], capture_output=True, text=True, timeout=60)
+    result = subprocess.run(sys.argv[1:], capture_output=True, text=True, timeout=60)
     print(result.stdout, end='')
     print(result.stderr, end='', file=sys.stderr)
     sys.exit(result.returncode)
