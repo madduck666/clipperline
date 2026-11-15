@@ -18,7 +18,22 @@ jobs:
           python3 scripts/check-release-version.py --require-windows
           python3 scripts/test-cross-platform-parity.py
       - name: XCTest and actual Mac shared behavior contract
-        run: swift test
+        run: |
+          set -o pipefail
+          if swift test 2>&1 | tee "$RUNNER_TEMP/clipboardline-swift-test.log"; then
+            exit 0
+          fi
+          # Surface bounded compiler/assertion errors in the run summary as well
+          # as logs, so a failed public build is diagnosable without a login.
+          python3 - "$RUNNER_TEMP/clipboardline-swift-test.log" <<'PYERRORS'
+          import pathlib, sys
+          errors = [line for line in pathlib.Path(sys.argv[1]).read_text().splitlines()
+                    if 'error:' in line or 'failed -' in line]
+          for line in errors[:15]:
+              escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::error title=Mac test failure::' + escaped)
+          PYERRORS
+          exit 1
         env:
           CLIPBOARDLINE_PARITY_REPORT: validation/parity/macos.json
       - name: Check localization
