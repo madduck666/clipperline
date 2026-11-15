@@ -28,3 +28,22 @@ except subprocess.TimeoutExpired as error:
     print('::error title=Native shelf drag::The native fixture exceeded 60 seconds; no successful drag result is claimed.')
     sys.exit(1)
 PYNATIVE
+
+if [ "$#" = 0 ]; then
+  # A separate, unprivileged app isolates external drag observation from the
+  # input-posting test process, before the full application is built.
+  HOST_APP="$OUT/NativeShelfHost.app"
+  mkdir -p "$HOST_APP/Contents/MacOS"
+  swiftc -O -swift-version 5 Sources/Tendedero/DropShelf.swift Tests/DropShelfNativeHost/main.swift -o "$HOST_APP/Contents/MacOS/ShelfHost"
+  python3 - "$HOST_APP/Contents/Info.plist" <<'PYHOST'
+import pathlib, plistlib, sys
+pathlib.Path(sys.argv[1]).write_bytes(plistlib.dumps({
+    'CFBundleIdentifier': 'org.clipboardline.native-shelf-host',
+    'CFBundleExecutable': 'ShelfHost', 'CFBundlePackageType': 'APPL',
+    'CFBundleName': 'NativeShelfHost', 'CFBundleVersion': '1', 'LSUIElement': True
+}))
+PYHOST
+  codesign --force --sign - "$HOST_APP"
+  # Reuse the actual packaged-app path and its external drag-out assertions.
+  bash "$0" "$HOST_APP"
+fi

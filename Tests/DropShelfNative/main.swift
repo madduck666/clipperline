@@ -52,6 +52,9 @@ func L(_ key: String) -> String { key }
         guard !finished else { return }; finished = true
         post(.leftMouseUp, at: lastPoint)
         shelf.stop(); window?.orderOut(nil)
+        if !success, let root, let diagnostics = try? String(contentsOf: root.appendingPathComponent("host-diagnostics.json")) {
+            print("::notice title=Independent shelf host::\(diagnostics)")
+        }
         if let packagedApp, !packagedApp.isTerminated { packagedApp.terminate() }
         if let root { try? FileManager.default.removeItem(at: root) }
         print("::\(success ? "notice" : "error") title=Native shelf drag::\(message)")
@@ -100,7 +103,11 @@ func L(_ key: String) -> String { key }
         do {
             // Match a user's Finder launch and await LaunchServices readiness,
             // rather than assuming a raw executable is ready after two seconds.
+            let applicationURL = URL(fileURLWithPath: CommandLine.arguments[1])
+            let expectedIdentifier = Bundle(url: applicationURL)?.bundleIdentifier
+            guard let expectedIdentifier, ["org.clipboardline.community", "org.clipboardline.native-shelf-host"].contains(expectedIdentifier) else { finish("Unexpected packaged fixture identity", success: false); return }
             let configuration = NSWorkspace.OpenConfiguration()
+            if expectedIdentifier == "org.clipboardline.native-shelf-host" { configuration.arguments = [root.appendingPathComponent("host-diagnostics.json").path] }
             configuration.createsNewApplicationInstance = true
             configuration.activates = false
             let app = try await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: CommandLine.arguments[1]), configuration: configuration)
@@ -109,7 +116,7 @@ func L(_ key: String) -> String { key }
                 if app.isFinishedLaunching || app.isTerminated { break }
                 await pause(0.1)
             }
-            guard app.bundleIdentifier == "org.clipboardline.community", app.isFinishedLaunching, !app.isTerminated else {
+            guard app.bundleIdentifier == expectedIdentifier, app.isFinishedLaunching, !app.isTerminated else {
                 finish("Packaged application did not finish launching: ready=\(app.isFinishedLaunching), terminated=\(app.isTerminated)", success: false); return
             }
             print("::notice title=Packaged launch::LaunchServices reports the community application ready"); fflush(stdout)
