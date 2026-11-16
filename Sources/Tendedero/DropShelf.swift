@@ -17,6 +17,9 @@ struct DropShelfCard: Equatable {
     /// Side of a card when several files are held; thumbnails are requested
     /// at this size rather than the single preview's size.
     static let stackSide: CGFloat = 72
+    /// Least share of a card's width that the card in front of it leaves
+    /// uncovered: the next card sits at least this far to the right.
+    static let stackReveal: CGFloat = 0.42
     var center: NSPoint
     var size: NSSize
     var rotation: CGFloat
@@ -115,8 +118,10 @@ struct DropShelfCard: Equatable {
 
     /// One card: today's single 100 pt preview, upright and centred. Several:
     /// up to four smaller cards, back to front, spread left to right and
-    /// fanned symmetrically, so a strip of every card behind stays visible.
-    /// Every rotated card lies inside `area`.
+    /// fanned symmetrically (the left card tilts left, the right one right;
+    /// the view is unflipped, so a positive angle turns counterclockwise).
+    /// Cards shrink as needed so each card behind keeps `stackReveal` of its
+    /// width visible. Every rotated card lies inside `area`.
     nonisolated static func stackLayout(count: Int, in area: NSRect) -> [DropShelfCard] {
         let n = min(max(count, 0), 4)
         guard n > 0, area.width > 0, area.height > 0 else { return [] }
@@ -132,8 +137,9 @@ struct DropShelfCard: Equatable {
         }
         let radians = 8 * Double.pi / 180
         let spread = CGFloat(cos(radians) + sin(radians))
-        let side = min(DropShelfCard.stackSide, area.height / spread, area.width / spread)
-        let step = max(0, min(30, (area.width - side * spread) / CGFloat(n - 1)))
+        let reveal = DropShelfCard.stackReveal
+        let side = min(DropShelfCard.stackSide, area.height / spread, area.width / (spread + CGFloat(n - 1) * reveal))
+        let step = max(0, min(side / 2, (area.width - side * spread) / CGFloat(n - 1)))
         return (0..<n).map { index in
             let offset = (CGFloat(index) - CGFloat(n - 1) / 2) * step
             return DropShelfCard(center: NSPoint(x: area.midX + offset, y: area.midY),

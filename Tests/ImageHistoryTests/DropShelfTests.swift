@@ -330,15 +330,19 @@ import XCTest
         }
         return count
     }
-    /// Light pixels inside `rect`, given in the view's unflipped coordinates
-    /// (bitmap rows count from the top).
-    private func brightPixels(_ view: DropShelfView, in rect: NSRect) throws -> Int {
+    /// The view drawn into a 1x bitmap whose rows count from the top.
+    private func render(_ view: DropShelfView) throws -> NSBitmapImageRep {
         let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 216, pixelsHigh: 228, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
         NSColor.clear.setFill(); view.bounds.fill(using: .copy)
         view.draw(view.bounds)
         NSGraphicsContext.restoreGraphicsState()
+        return bitmap
+    }
+    /// Light pixels inside `rect`, given in the view's unflipped coordinates.
+    private func brightPixels(_ view: DropShelfView, in rect: NSRect) throws -> Int {
+        let bitmap = try render(view)
         var count = 0
         for x in Int(rect.minX.rounded())..<Int(rect.maxX.rounded()) {
             for viewY in Int(rect.minY.rounded())..<Int(rect.maxY.rounded()) {
@@ -347,6 +351,43 @@ import XCTest
             }
         }
         return count
+    }
+    /// Whether `point` lies inside the rotated card, at least `inset` from its
+    /// edges (a negative inset grows the card).
+    private func cardContains(_ card: DropShelfCard, _ point: NSPoint, inset: CGFloat) -> Bool {
+        let radians = Double(card.rotation) * Double.pi / 180
+        let dx = Double(point.x - card.center.x), dy = Double(point.y - card.center.y)
+        let x = dx * cos(radians) + dy * sin(radians), y = -dx * sin(radians) + dy * cos(radians)
+        return abs(x) < Double(card.size.width / 2 - inset) && abs(y) < Double(card.size.height / 2 - inset)
+    }
+    /// For each card of the drawn stack, back to front: the pixels of the card
+    /// that no card in front covers (4 pt in from its own edge and 10 pt clear
+    /// of every card in front, so borders, antialiasing and the front cards'
+    /// shadows never count), and how many of those are drawn lighter than the
+    /// box's surface. Without the card they would show the bare surface.
+    private func uncoveredCardPixels(_ view: DropShelfView) throws -> [(region: Int, lighter: Int)] {
+        let bitmap = try render(view)
+        let cards = DropShelf.stackLayout(count: DropShelf.stackFiles(view.files).count, in: DropShelf.previewArea(in: view.bounds))
+        // Bare surface, left of the preview area and below the close button.
+        let surface = try XCTUnwrap(bitmap.colorAt(x: 20, y: 227 - 120)?.usingColorSpace(.deviceRGB))
+        var result: [(region: Int, lighter: Int)] = []
+        for (index, card) in cards.enumerated() {
+            let box = card.boundingBox
+            var region = 0, lighter = 0
+            for x in Int(box.minX.rounded(.down))..<Int(box.maxX.rounded(.up)) {
+                for y in Int(box.minY.rounded(.down))..<Int(box.maxY.rounded(.up)) {
+                    let point = NSPoint(x: CGFloat(x) + 0.5, y: CGFloat(y) + 0.5)
+                    guard cardContains(card, point, inset: 4),
+                          !cards[(index + 1)...].contains(where: { cardContains($0, point, inset: -10) }) else { continue }
+                    region += 1
+                    guard let color = bitmap.colorAt(x: x, y: 227 - y)?.usingColorSpace(.deviceRGB) else { continue }
+                    if color.alphaComponent > 0.9, color.redComponent > surface.redComponent + 0.05,
+                       color.greenComponent > surface.greenComponent + 0.05, color.blueComponent > surface.blueComponent + 0.05 { lighter += 1 }
+                }
+            }
+            result.append((region: region, lighter: lighter))
+        }
+        return result
     }
     func testStackLayoutFansUpToFourCardsInsideThePreviewArea() {
         let bounds = NSRect(x: 0, y: 0, width: 216, height: 228)
@@ -380,6 +421,10 @@ import XCTest
                 XCTAssertEqual(cards[i].rotation, -mirror.rotation, accuracy: 0.0001)
                 XCTAssertEqual(cards[i].center.x - area.midX, area.midX - mirror.center.x, accuracy: 0.0001)
                 XCTAssertLessThanOrEqual(abs(cards[i].rotation), 8)
+                if i > 0 {
+                    // The front card never hides most of the card behind it.
+                    XCTAssertGreaterThan(cards[i].center.x - cards[i - 1].center.x, 0.4 * cards[i].size.width, "Card behind is covered for \(count)")
+                }
                 for j in cards.indices where j > i {
                     // Each card behind leaves a clear strip on its left.
                     XCTAssertGreaterThan(cards[j].center.x - cards[i].center.x, 15)
@@ -406,19 +451,30 @@ import XCTest
         _ = NSApplication.shared
         let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
         let area = DropShelf.previewArea(in: view.bounds)
-        let third = area.width / 3
-        let left = NSRect(x: area.minX, y: area.minY, width: third, height: area.height)
-        let right = NSRect(x: area.maxX - third, y: area.minY, width: third, height: area.height)
         let files = [URL(fileURLWithPath: "/synthetic/a.txt"), URL(fileURLWithPath: "/synthetic/b.png"),
-                     URL(fileURLWithPath: "/synthetic/Photos", isDirectory: true)]
-        view.files = files
-        XCTAssertEqual(view.shelfDisplay.title, String(format: L("%d items"), 3))
-        XCTAssertGreaterThan(try brightPixels(view, in: left), 20, "A card behind the front one must show")
-        XCTAssertGreaterThan(try brightPixels(view, in: right), 20, "The front card must show")
+                     URL(fileURLWithPath: "/synthetic/Photos", isDirectory: true), URL(fileURLWithPath: "/synthetic/d.pdf"),
+                     URL(fileURLWithPath: "/synthetic/e.txt")]
+        func assertEveryCardShows(_ label: String) throws {
+            let cards = try uncoveredCardPixels(view)
+            XCTAssertEqual(cards.count, min(view.files.count, 4), label)
+            for (index, card) in cards.enumerated() {
+                // Geometry: a real strip of every card behind stays uncovered
+                // (over 400 px after the margins; the old 72 pt, 4-file layout left
+                // under 350, about 28% of each card).
+                XCTAssertGreaterThan(card.region, 400, "\(label): card \(index) is hidden")
+                // Drawing: that strip shows the card, not the bare surface.
+                XCTAssertGreaterThan(card.lighter, card.region * 9 / 10, "\(label): card \(index) is not drawn")
+            }
+        }
+        for count in 2...5 {
+            view.files = Array(files[..<count])
+            XCTAssertEqual(view.shelfDisplay.title, String(format: L("%d items"), count))
+            try assertEveryCardShows("\(count) files")
+        }
         // A failed thumbnail for one card never blanks the others.
+        view.files = Array(files[..<3])
         view.previews[files[1]] = NSImage(size: .zero)
-        XCTAssertGreaterThan(try brightPixels(view, in: left), 20)
-        XCTAssertGreaterThan(try brightPixels(view, in: right), 20)
+        try assertEveryCardShows("failed thumbnail")
         // A single file still draws its one large symbol.
         view.files = [files[0]]; view.previews = [:]
         XCTAssertGreaterThan(try brightPixels(view, in: area), 100)
