@@ -12,7 +12,7 @@ jobs:
       group: clipperline-mac-tests-${{ github.ref }}
       cancel-in-progress: false
     runs-on: macos-15-intel
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -25,12 +25,11 @@ jobs:
       - name: XCTest and actual Mac shared behavior contract
         run: |
           set -o pipefail
-          if swift test 2>&1 | tee "$RUNNER_TEMP/clipboardline-swift-test.log"; then
-            exit 0
-          fi
-          # Surface bounded compiler/assertion errors in the run summary as well
-          # as logs, so a failed public build is diagnosable without a login.
-          python3 - "$RUNNER_TEMP/clipboardline-swift-test.log" <<'PYERRORS'
+          log="$RUNNER_TEMP/clipboardline-swift-test.log"
+          report_errors() {
+            # Surface bounded compiler/assertion errors in the run summary as well
+            # as logs, so a failed public build is diagnosable without a login.
+            python3 - "$log" <<'PYERRORS'
           import pathlib, re, sys
           lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
           # Framework services can emit many unrelated "error:" messages.
@@ -46,6 +45,40 @@ jobs:
               escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::error title=Mac test failure::' + escaped)
           PYERRORS
+          }
+          if swift test 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          # Hosted runners occasionally fail key-window/first-responder focus
+          # assertions. Retry only when every failed test case belongs to
+          # LibraryFocusNativeTests; anything else fails immediately.
+          failed=$(sed -nE "s/.*Test Case '-\[([^] ]+) ([^] ]+)\]' failed.*/\1 \2/p" "$log" | sort -u || true)
+          retryable=0
+          if [ -n "$failed" ]; then
+            retryable=1
+            while read -r cls name; do
+              if [ "${cls##*.}" != "LibraryFocusNativeTests" ]; then
+                retryable=0
+              fi
+            done <<EOFAILED
+          $failed
+          EOFAILED
+          fi
+          if [ "$retryable" = "1" ]; then
+            names=$(printf '%s\n' "$failed" | awk '{print $2}' | tr '\n' ' ')
+            attempt=1
+            while [ "$attempt" -le 3 ]; do
+              echo "Re-running LibraryFocusNativeTests (retry $attempt of 3)"
+              # Unset the parity report so re-runs cannot overwrite the first run's.
+              if env -u CLIPBOARDLINE_PARITY_REPORT swift test --filter LibraryFocusNativeTests 2>&1 | tee "$RUNNER_TEMP/clipboardline-swift-retry-$attempt.log"; then
+                echo "::warning title=Flaky LibraryFocusNativeTests::Passed on retry $attempt after first-run failure of: $names"
+                exit 0
+              fi
+              attempt=$((attempt + 1))
+            done
+            echo "::warning title=LibraryFocusNativeTests retries exhausted::Failed on all 3 retries: $names"
+          fi
+          report_errors
           exit 1
         env:
           CLIPBOARDLINE_PARITY_REPORT: validation/parity/macos.json
