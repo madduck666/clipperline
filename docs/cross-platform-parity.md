@@ -213,7 +213,7 @@ stays in place so subsequent drops do not chase a moving target.
 
 Drop up to 100 local items, including folders and application bundles. Repeated
 paths are deduplicated. Drag the contents into another application or folder;
-the Mac source advertises copy. Close clears temporary references, never the
+the Mac source offers copy and move outside the app (a finished move removes those items; see `drop-shelf-move-out`). Close clears temporary references, never the
 original files. Empty shelves disappear after a cancelled drag. Contents are
 session-only and do not enter clipboard history, Library, persistence or indexing.
 The header moves the shelf manually. File promises and network URLs are outside

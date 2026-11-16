@@ -259,7 +259,8 @@ import XCTest
     }
     func testEndedDragPrunesFilesThatNoLongerExist() throws {
         let a = URL(fileURLWithPath: "/synthetic/a.txt"), b = URL(fileURLWithPath: "/synthetic/b.txt")
-        for operation in [NSDragOperation.copy, [], .move] {
+        let operations: [NSDragOperation] = [.copy, [], .move]
+        for operation in operations {
             XCTAssertEqual(DropShelf.filesAfterDrag([a, b], dragged: [], operation: operation, exists: { $0 != a }), [b])
         }
         // The controller applies the same rule to real files.

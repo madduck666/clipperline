@@ -160,10 +160,10 @@ import QuickLookThumbnailing
         active = true; lastChange = board.changeCount; reveal()
     }
     func reveal() {
-        generation += 1
         guard !panel.isVisible else { return }
+        generation += 1
         let point = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) ?? NSScreen.main else { return }
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else { return }
         if model.files.isEmpty { view.message = ""; view.needsDisplay = true }
         panel.setFrame(DropShelf.placement(area: screen.visibleFrame, pointer: point), display: true)
         panel.orderFrontRegardless()
