@@ -550,3 +550,10 @@
 "Drop files here" = "ここにファイルをドロップ";
 "Drag to another window" = "別のウインドウにドラッグ";
 "A dropped file is no longer available." = "ドロップしたファイルが見つかりません。";
+/* Drop shelf files view and menus. */
+"Open With" = "このアプリケーションで開く";
+"%@ (default)" = "%@（デフォルト）";
+"AirDrop" = "AirDrop";
+"Mail" = "メール";
+"Remove from shelf" = "シェルフから取り除く";
+"Back" = "戻る";

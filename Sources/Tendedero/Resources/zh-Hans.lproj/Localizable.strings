@@ -550,3 +550,10 @@
 "Drop files here" = "将文件拖放到此处";
 "Drag to another window" = "拖动到其他窗口";
 "A dropped file is no longer available." = "已放入的文件不再可用。";
+/* Drop shelf files view and menus. */
+"Open With" = "打开方式";
+"%@ (default)" = "%@（默认）";
+"AirDrop" = "隔空投送";
+"Mail" = "邮件";
+"Remove from shelf" = "从置物架移除";
+"Back" = "返回";

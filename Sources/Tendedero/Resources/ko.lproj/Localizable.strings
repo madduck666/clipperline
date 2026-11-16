@@ -550,3 +550,10 @@
 "Drop files here" = "여기에 파일 놓기";
 "Drag to another window" = "다른 창으로 드래그";
 "A dropped file is no longer available." = "놓은 파일을 더 이상 사용할 수 없습니다.";
+/* Drop shelf files view and menus. */
+"Open With" = "다음으로 열기";
+"%@ (default)" = "%@(기본)";
+"AirDrop" = "AirDrop";
+"Mail" = "메일";
+"Remove from shelf" = "선반에서 제거";
+"Back" = "뒤로";

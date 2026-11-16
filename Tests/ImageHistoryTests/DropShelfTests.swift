@@ -292,7 +292,9 @@ import XCTest
         let one = DropShelf.display(files: [file], message: "")
         XCTAssertEqual(one.title, "Quarterly report.pdf")
         XCTAssertEqual(one.symbol, "doc")
-        XCTAssertEqual(one.subtitle, L("Drag to another window"))
+        // The old "Drag to another window" line is gone; the empty box keeps its caption.
+        XCTAssertEqual(one.subtitle, "")
+        XCTAssertEqual(empty.subtitle, L("Drop shelf"))
         XCTAssertEqual(one.detail, "")
         XCTAssertEqual(DropShelf.display(files: [folder], message: "").title, "Photos")
         XCTAssertEqual(DropShelf.display(files: [folder], message: "").symbol, "folder")
@@ -300,6 +302,7 @@ import XCTest
         XCTAssertEqual(several.title, String(format: L("%d items"), 3))
         XCTAssertTrue(several.title.contains("3"))
         XCTAssertEqual(several.symbol, "doc.on.doc")
+        XCTAssertEqual(several.subtitle, "")
         let warned = DropShelf.display(files: [], message: L("A dropped file is no longer available."))
         XCTAssertTrue(warned.isWarning)
         XCTAssertEqual(warned.detail, L("A dropped file is no longer available."))
@@ -540,5 +543,196 @@ import XCTest
         XCTAssertTrue(controller.model.files.isEmpty)
         XCTAssertEqual(try String(contentsOf: file), "synthetic")
         controller.stop()
+    }
+    func testPillAndFileListTitles() {
+        XCTAssertNil(DropShelf.pillTitle(count: 0))
+        XCTAssertNil(DropShelf.pillTitle(count: 1), "One file shows its name, not a pill")
+        XCTAssertEqual(DropShelf.pillTitle(count: 2), String(format: L("%d items"), 2))
+        XCTAssertEqual(DropShelf.pillTitle(count: 37), String(format: L("%d items"), 37))
+        XCTAssertTrue(DropShelf.pillTitle(count: 37)?.contains("37") == true)
+        // The header shows the count at once and the total size once every size is read.
+        XCTAssertEqual(DropShelf.listTitle(count: 3, totalBytes: nil), String(format: L("%d items"), 3))
+        let sized = DropShelf.listTitle(count: 3, totalBytes: 2_500_000)
+        XCTAssertTrue(sized.hasPrefix(String(format: L("%d items"), 3)))
+        XCTAssertTrue(sized.hasSuffix(ByteCountFormatter.string(fromByteCount: 2_500_000, countStyle: .file)))
+        XCTAssertEqual(DropShelf.totalBytes([1_000, 24, 0]), 1_024)
+        XCTAssertNil(DropShelf.totalBytes([1_000, nil, 24]), "A partial sum is never shown as the total")
+        XCTAssertNil(DropShelf.totalBytes([]))
+    }
+    func testDiskSizeCountsFilesAndFolderContents() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let folder = root.appendingPathComponent("Folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("Inner"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("a.txt")
+        try Data(count: 300).write(to: file)
+        try Data(count: 200).write(to: folder.appendingPathComponent("b.bin"))
+        try Data(count: 50).write(to: folder.appendingPathComponent("Inner/c.bin"))
+        XCTAssertEqual(DropShelf.diskSize(of: file), 300)
+        XCTAssertEqual(DropShelf.diskSize(of: folder), 250)
+        XCTAssertNil(DropShelf.diskSize(of: root.appendingPathComponent("missing")))
+    }
+    func testMenuItemsEnabledForEmptyAndNonEmptySelection() {
+        XCTAssertTrue(DropShelf.enabledActions(count: 0, canAirDrop: true, canMail: true).isEmpty, "Nothing to act on")
+        XCTAssertEqual(DropShelf.enabledActions(count: 1, canAirDrop: true, canMail: true), Set(DropShelfAction.allCases))
+        XCTAssertEqual(DropShelf.enabledActions(count: 1, canAirDrop: false, canMail: false), [.openWith, .showInFinder, .quickLook, .remove])
+        // The actions menu acts on every file; Open With and Remove belong to one file's menu.
+        XCTAssertEqual(DropShelf.enabledActions(count: 4, canAirDrop: true, canMail: false), [.showInFinder, .quickLook, .airDrop])
+        XCTAssertEqual(DropShelf.enabledActions(count: 4, canAirDrop: false, canMail: true), [.showInFinder, .quickLook, .mail])
+        // Open With: the default application first, each application once.
+        let preview = URL(fileURLWithPath: "/System/Applications/Preview.app", isDirectory: true)
+        let other = URL(fileURLWithPath: "/Applications/Other.app", isDirectory: true)
+        XCTAssertEqual(DropShelf.orderedApplications([other, preview, other], preferred: preview), [preview, other])
+        XCTAssertEqual(DropShelf.orderedApplications([other], preferred: nil), [other])
+        XCTAssertTrue(DropShelf.orderedApplications([], preferred: nil).isEmpty)
+        // A shelf menu, Quick Look or a share in progress keeps the visible box where it is.
+        XCTAssertFalse(DropShelf.monitorPaused(menuOpen: false, quickLookOpen: false, sharing: false, panelVisible: true))
+        XCTAssertTrue(DropShelf.monitorPaused(menuOpen: true, quickLookOpen: false, sharing: false, panelVisible: true))
+        XCTAssertTrue(DropShelf.monitorPaused(menuOpen: false, quickLookOpen: true, sharing: false, panelVisible: true))
+        XCTAssertTrue(DropShelf.monitorPaused(menuOpen: false, quickLookOpen: false, sharing: true, panelVisible: true))
+        XCTAssertFalse(DropShelf.monitorPaused(menuOpen: true, quickLookOpen: true, sharing: true, panelVisible: false),
+                       "A hidden box still reappears for the next file drag")
+    }
+    func testRemoveFromShelfTakesOnlyThatEntryAndKeepsTheFile() throws {
+        let a = URL(fileURLWithPath: "/synthetic/a.txt"), b = URL(fileURLWithPath: "/synthetic/b", isDirectory: true)
+        let c = URL(fileURLWithPath: "/synthetic/c.png")
+        XCTAssertEqual(DropShelf.filesRemoving(b, from: [a, b, c]), [a, c])
+        XCTAssertEqual(DropShelf.filesRemoving(URL(fileURLWithPath: "/synthetic/other"), from: [a, b, c]), [a, b, c])
+        XCTAssertEqual(DropShelf.filesRemoving(a, from: [a]), [])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = ["one.txt", "two.txt", "three.txt"].map { root.appendingPathComponent($0) }
+        for file in files { try Data("synthetic".utf8).write(to: file) }
+        let controller = DropShelfController(); defer { controller.stop() }
+        XCTAssertTrue(controller.accept(files))
+        controller.showList()
+        XCTAssertTrue(controller.isShowingList)
+        controller.remove(files[1])
+        XCTAssertEqual(controller.model.files, [files[0], files[2]])
+        XCTAssertTrue(controller.isShowingList)
+        // Down to one file the list has no pill to return to: back to the compact box.
+        controller.remove(files[0])
+        XCTAssertEqual(controller.model.files, [files[2]])
+        XCTAssertFalse(controller.isShowingList)
+        controller.remove(files[2])
+        XCTAssertTrue(controller.model.files.isEmpty)
+        for file in files { XCTAssertEqual(try String(contentsOf: file), "synthetic", "Remove never touches the file") }
+    }
+    func testFileListOpensAndReturnsWithEveryFileListed() throws {
+        _ = NSApplication.shared
+        let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        XCTAssertTrue(view.pillButton.isHidden, "No pill for an empty box")
+        view.files = [URL(fileURLWithPath: "/synthetic/one.txt")]
+        XCTAssertTrue(view.pillButton.isHidden, "No pill for one file")
+        let files = (1...7).map { URL(fileURLWithPath: "/synthetic/file \($0).txt") }
+        view.files = files
+        XCTAssertFalse(view.pillButton.isHidden)
+        XCTAssertEqual(view.pillButton.attributedTitle.string, String(format: L("%d items"), 7))
+        // The pill sits centred under the stack, clear of the preview area.
+        XCTAssertEqual(view.pillButton.frame.midX, view.bounds.midX, accuracy: 1)
+        XCTAssertLessThanOrEqual(view.pillButton.frame.maxY, DropShelf.previewArea(in: view.bounds).minY)
+        view.setMode(.list)
+        XCTAssertEqual(view.mode, .list)
+        XCTAssertTrue(view.pillButton.isHidden)
+        XCTAssertFalse(view.listView.isHidden)
+        XCTAssertEqual(view.listView.rows.map(\.url), files)
+        XCTAssertEqual(view.listView.headerTitle, String(format: L("%d items"), 7))
+        view.listView.setSizes(Array(repeating: Optional(Int64(1_000)), count: 7), for: files)
+        XCTAssertEqual(view.listView.headerTitle, DropShelf.listTitle(count: 7, totalBytes: 7_000))
+        // A drop or a drag-out changes the list in place; sizes already read stay.
+        view.files = Array(files[2...])
+        XCTAssertEqual(view.listView.rows.map(\.url), Array(files[2...]))
+        XCTAssertEqual(view.listView.headerTitle, DropShelf.listTitle(count: 5, totalBytes: 5_000))
+        view.setMode(.compact)
+        XCTAssertTrue(view.listView.isHidden)
+        XCTAssertFalse(view.pillButton.isHidden)
+    }
+    func testFileListFrameStaysOnScreenAndAnchoredToTheBox() {
+        let size = DropShelfLayout.listSize
+        for area in [NSRect(x: 0, y: 70, width: 1440, height: 805), NSRect(x: -1280, y: 0, width: 1280, height: 775)] {
+            let inside = area.insetBy(dx: 8, dy: 8)
+            // Compact boxes near every edge and corner (their top-left corners).
+            let anchors = [
+                NSPoint(x: area.midX, y: area.midY),
+                NSPoint(x: area.minX + 8, y: area.midY), NSPoint(x: area.maxX - 224, y: area.midY),
+                NSPoint(x: area.midX, y: area.minY + 236), NSPoint(x: area.midX, y: area.maxY - 8),
+                NSPoint(x: area.minX + 8, y: area.maxY - 8), NSPoint(x: area.maxX - 224, y: area.minY + 236),
+                NSPoint(x: area.maxX + 50, y: area.maxY + 50), NSPoint(x: area.minX - 50, y: area.minY - 50),
+            ]
+            for anchor in anchors {
+                let frame = DropShelf.panelFrame(size: size, topLeft: anchor, in: area)
+                XCTAssertEqual(frame.size, size)
+                XCTAssertTrue(inside.contains(frame), "Outside the visible frame for \(anchor): \(frame)")
+                // It moves only as far as the edge requires.
+                let wantedX = min(max(anchor.x, inside.minX), inside.maxX - size.width)
+                let wantedTop = min(max(anchor.y, inside.minY + size.height), inside.maxY)
+                XCTAssertEqual(frame.minX, wantedX.rounded(), accuracy: 0.5)
+                XCTAssertEqual(frame.maxY, wantedTop.rounded(), accuracy: 0.5)
+            }
+            // With room the top-left corner stays exactly where the box was.
+            let middle = DropShelf.panelFrame(size: size, topLeft: NSPoint(x: area.midX, y: area.midY), in: area)
+            XCTAssertEqual(middle.minX, area.midX.rounded(), accuracy: 0.5)
+            XCTAssertEqual(middle.maxY, area.midY.rounded(), accuracy: 0.5)
+            // Back to the compact size at the box's old place.
+            let compact = DropShelf.panelFrame(size: DropShelfLayout.compactSize, topLeft: NSPoint(x: area.midX, y: area.midY), in: area)
+            XCTAssertEqual(compact.size, DropShelfLayout.compactSize)
+        }
+        // A screen smaller than the list still keeps it inside.
+        let small = NSRect(x: -400, y: 100, width: 300, height: 240)
+        let shrunk = DropShelf.panelFrame(size: size, topLeft: NSPoint(x: -300, y: 300), in: small)
+        XCTAssertTrue(small.contains(shrunk))
+        XCTAssertLessThan(shrunk.width, size.width)
+    }
+    func testFramelessPreviewKeepsTheImageProportionsInsideItsSlot() {
+        let slot = NSRect(x: 58, y: 80, width: 100, height: 100)
+        let wide = DropShelf.framelessRect(imageSize: NSSize(width: 1600, height: 900), in: slot)
+        XCTAssertEqual(wide.width, 100, accuracy: 0.001); XCTAssertEqual(wide.height, 56.25, accuracy: 0.001)
+        XCTAssertEqual(wide.midX, slot.midX, accuracy: 0.001); XCTAssertEqual(wide.midY, slot.midY, accuracy: 0.001)
+        let tall = DropShelf.framelessRect(imageSize: NSSize(width: 300, height: 900), in: slot)
+        XCTAssertEqual(tall.height, 100, accuracy: 0.001); XCTAssertEqual(tall.width, 100.0 / 3, accuracy: 0.001)
+        XCTAssertEqual(tall.midX, slot.midX, accuracy: 0.001)
+        for rect in [wide, tall] { XCTAssertTrue(slot.insetBy(dx: -0.001, dy: -0.001).contains(rect)) }
+    }
+    private func solidImage(_ size: NSSize) -> NSImage {
+        NSImage(size: size, flipped: false) { rect in
+            NSColor(srgbRed: 0.9, green: 0.1, blue: 0.1, alpha: 1).setFill()
+            rect.fill()
+            return true
+        }
+    }
+    func testThumbnailsDrawFramelessWithoutACardOrBorder() throws {
+        _ = NSApplication.shared
+        let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        let area = DropShelf.previewArea(in: view.bounds)
+        // One file with a wide thumbnail: the image is the preview, nothing is
+        // drawn above or below it inside the slot.
+        view.files = [URL(fileURLWithPath: "/synthetic/wide.png")]
+        view.preview = solidImage(NSSize(width: 200, height: 100))
+        let slot = try XCTUnwrap(DropShelf.stackLayout(count: 1, in: area).first?.frame)
+        let image = DropShelf.framelessRect(imageSize: NSSize(width: 200, height: 100), in: slot)
+        let bitmap = try render(view)
+        let surface = try XCTUnwrap(bitmap.colorAt(x: 20, y: 227 - 120)?.usingColorSpace(.deviceRGB))
+        let centre = try XCTUnwrap(bitmap.colorAt(x: Int(image.midX), y: 227 - Int(image.midY))?.usingColorSpace(.deviceRGB))
+        XCTAssertGreaterThan(centre.redComponent, 0.6); XCTAssertLessThan(centre.greenComponent, 0.3)
+        var lighter = 0, checked = 0
+        for x in Int(slot.minX + 4)..<Int(slot.maxX - 4) {
+            for y in Array(Int(slot.minY + 2)..<Int(image.minY - 6)) + Array(Int(image.maxY + 6)..<Int(slot.maxY - 2)) {
+                checked += 1
+                guard let color = bitmap.colorAt(x: x, y: 227 - y)?.usingColorSpace(.deviceRGB) else { continue }
+                if color.redComponent > surface.redComponent + 0.05 || color.greenComponent > surface.greenComponent + 0.05 ||
+                    color.blueComponent > surface.blueComponent + 0.05 { lighter += 1 }
+            }
+        }
+        XCTAssertGreaterThan(checked, 1000)
+        XCTAssertEqual(lighter, 0, "No card background around a thumbnail")
+        // Several files with thumbnails: no light border and no symbol, only the images.
+        let files = (1...3).map { URL(fileURLWithPath: "/synthetic/\($0).png") }
+        view.files = files; view.preview = nil
+        for file in files { view.previews[file] = solidImage(NSSize(width: 160, height: 90)) }
+        XCTAssertEqual(try brightPixels(view, in: area), 0, "Thumbnails are not boxed")
+        // Until thumbnails arrive the placeholders still show their symbols.
+        view.previews = [:]
+        XCTAssertGreaterThan(try brightPixels(view, in: area), 100)
     }
 }

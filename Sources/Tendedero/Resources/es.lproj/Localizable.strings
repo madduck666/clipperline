@@ -550,3 +550,10 @@
 "Drop files here" = "Suelta archivos aquí";
 "Drag to another window" = "Arrastra a otra ventana";
 "A dropped file is no longer available." = "Uno de los archivos ya no está disponible.";
+/* Drop shelf files view and menus. */
+"Open With" = "Abrir con";
+"%@ (default)" = "%@ (predeterminada)";
+"AirDrop" = "AirDrop";
+"Mail" = "Mail";
+"Remove from shelf" = "Quitar del estante";
+"Back" = "Atrás";

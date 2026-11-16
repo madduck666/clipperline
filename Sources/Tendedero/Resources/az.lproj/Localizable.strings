@@ -550,3 +550,10 @@
 "Drop files here" = "Faylları buraya buraxın";
 "Drag to another window" = "Başqa pəncərəyə sürükləyin";
 "A dropped file is no longer available." = "Buraxılmış fayl artıq mövcud deyil.";
+/* Drop shelf files view and menus. */
+"Open With" = "Bununla aç";
+"%@ (default)" = "%@ (standart)";
+"AirDrop" = "AirDrop";
+"Mail" = "Mail";
+"Remove from shelf" = "Rəfdən çıxar";
+"Back" = "Geri";
