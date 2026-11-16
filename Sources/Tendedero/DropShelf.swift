@@ -352,10 +352,11 @@ final class DropShelfMenuItem: NSMenuItem {
 @MainActor final class DropShelfSharing: NSObject, NSSharingServiceDelegate {
     var onFinish: (() -> Void)?
     nonisolated func sharingService(_ sharingService: NSSharingService, didShareItems items: [Any]) {
-        DispatchQueue.main.async { [weak self] in self?.onFinish?() }
+        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onFinish?() } }
     }
+    /// Also called when the person cancels AirDrop or Mail.
     nonisolated func sharingService(_ sharingService: NSSharingService, didFailToShareItems items: [Any], error: Error) {
-        DispatchQueue.main.async { [weak self] in self?.onFinish?() }
+        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onFinish?() } }
     }
 }
 
@@ -665,6 +666,8 @@ final class DropShelfMenuItem: NSMenuItem {
         preview.dataSource = quickLook
         preview.delegate = quickLook
         preview.reloadData()
+        // Never beneath the floating shelf: same level, ordered in front.
+        if preview.level.rawValue < panel.level.rawValue { preview.level = panel.level }
         preview.makeKeyAndOrderFront(nil)
         // The controller may take the panel again as it comes forward.
         preview.dataSource = quickLook
@@ -796,7 +799,9 @@ final class DropShelfMenuItem: NSMenuItem {
         updateControls()
     }
     private func updateControls() {
-        closeButton.isHidden = mode == .list
+        // The files view keeps a close button too, at the top right (its back
+        // button sits where the compact box's close button is).
+        closeButton.isHidden = false
         actionsButton.isHidden = mode == .list || files.isEmpty
         pillButton.isHidden = mode == .list || DropShelf.pillTitle(count: files.count) == nil
         listView.isHidden = mode != .list
@@ -805,7 +810,7 @@ final class DropShelfMenuItem: NSMenuItem {
     }
     private func relayout() {
         let size = bounds.size
-        closeButton.frame = NSRect(x: 9, y: size.height - 37, width: 28, height: 28)
+        closeButton.frame = NSRect(x: mode == .list ? size.width - 37 : 9, y: size.height - 37, width: 28, height: 28)
         actionsButton.frame = NSRect(x: size.width - 37, y: size.height - 37, width: 28, height: 28)
         pillButton.sizeToFit()
         let width = max(0, min(pillButton.frame.width + 20, size.width - 40))
@@ -1098,7 +1103,7 @@ final class DropShelfMenuItem: NSMenuItem {
     func layoutContents() {
         let size = bounds.size
         backButton.frame = NSRect(x: 9, y: size.height - 37, width: 28, height: 28)
-        titleLabel.frame = NSRect(x: 44, y: size.height - 33, width: max(0, size.width - 56), height: 18)
+        titleLabel.frame = NSRect(x: 44, y: size.height - 33, width: max(0, size.width - 88), height: 18)
         finderButton.sizeToFit()
         let buttonWidth = max(0, min(finderButton.frame.width + 16, size.width - 24))
         finderButton.frame = NSRect(x: ((size.width - buttonWidth) / 2).rounded(), y: 10, width: buttonWidth, height: 28)
