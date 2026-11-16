@@ -25,26 +25,53 @@ import QuickLookThumbnailing
     }
     func clear() { files.removeAll() }
 
-    static func placement(area: NSRect, pointer: NSPoint, obstacles: [NSRect]) -> NSRect {
-        let width = min(216.0, area.width), height = min(228.0, area.height), margin = 16.0
-        var xs = [area.minX + margin, area.maxX - width - margin]
-        var ys = [area.minY + margin, area.maxY - height - margin]
-        for rect in obstacles {
-            xs += [rect.minX - width - margin, rect.maxX + margin]
-            ys += [rect.minY - height - margin, rect.maxY + margin]
+    /// After a drag out of the box ends. A move (Finder, same volume, no
+    /// Option key) takes the dragged items out of the box; a copy or a
+    /// cancelled drag keeps them. Either way, an item whose file is no longer
+    /// at its stored location leaves the box.
+    func finishDrag(dragged: [URL], operation: NSDragOperation, exists: (URL) -> Bool) {
+        files = DropShelf.filesAfterDrag(files, dragged: dragged, operation: operation, exists: exists)
+    }
+
+    /// Outside the app, Finder may move (same volume) or copy (other volume,
+    /// or Option held). Inside the app only a copy makes sense.
+    nonisolated static func dragOperationMask(for context: NSDraggingContext) -> NSDragOperation {
+        context == .withinApplication ? .copy : [.copy, .move]
+    }
+
+    nonisolated static func filesAfterDrag(_ stored: [URL], dragged: [URL], operation: NSDragOperation, exists: (URL) -> Bool) -> [URL] {
+        let kept = operation.contains(.move) ? stored.filter { !dragged.contains($0) } : stored
+        return kept.filter { exists($0) }
+    }
+
+    /// The box opens beside the pointer, near enough to reach while the drag
+    /// is still held: to the right by default, else left, below or above.
+    /// It stays inside the visible frame (never under the menu bar or Dock)
+    /// and never under the pointer itself.
+    nonisolated static func placement(area: NSRect, pointer: NSPoint) -> NSRect {
+        let width: CGFloat = min(216, area.width), height: CGFloat = min(228, area.height)
+        let gap: CGFloat = 32, margin: CGFloat = 8
+        func clamp(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
+            high < low ? (low + high) / 2 : min(max(value, low), high)
         }
-        let cursor = NSRect(x: pointer.x - 48, y: pointer.y - 48, width: 96, height: 96)
-        func overlap(_ a: NSRect, _ b: NSRect) -> Double {
-            let intersection = a.intersection(b)
-            return intersection.isNull ? 0 : intersection.width * intersection.height
+        func fit(_ x: CGFloat, _ y: CGFloat) -> NSRect {
+            NSRect(x: clamp(x, area.minX + margin, area.maxX - width - margin).rounded(),
+                   y: clamp(y, area.minY + margin, area.maxY - height - margin).rounded(),
+                   width: width, height: height)
         }
-        var best = NSRect(x: area.minX, y: area.minY, width: width, height: height), score = Double.infinity
-        for x in xs { for y in ys {
-            let rect = NSRect(x: max(area.minX, min(area.maxX - width, x)).rounded(), y: max(area.minY, min(area.maxY - height, y)).rounded(), width: width, height: height)
-            let next = obstacles.reduce(0) { $0 + overlap(rect, $1) } + overlap(rect, cursor) * 1000 + hypot(rect.midX - pointer.x, rect.midY - pointer.y) * 0.001
-            if next < score { best = rect; score = next }
-        } }
-        return best
+        func clearance(_ rect: NSRect) -> CGFloat {
+            let dx = max(rect.minX - pointer.x, 0, pointer.x - rect.maxX)
+            let dy = max(rect.minY - pointer.y, 0, pointer.y - rect.maxY)
+            return hypot(dx, dy)
+        }
+        let candidates: [NSRect] = [
+            fit(pointer.x + gap, pointer.y - height / 2),
+            fit(pointer.x - gap - width, pointer.y - height / 2),
+            fit(pointer.x - width / 2, pointer.y - gap - height),
+            fit(pointer.x - width / 2, pointer.y + gap),
+        ]
+        if let near = candidates.first(where: { clearance($0) >= gap / 2 }) { return near }
+        return candidates.max(by: { clearance($0) < clearance($1) }) ?? candidates[0]
     }
 }
 
@@ -80,7 +107,16 @@ import QuickLookThumbnailing
         let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
         view.onDrop = { [weak self] urls in self?.accept(urls) ?? false }
         view.onClose = { [weak self] in self?.dismiss() }
-        view.dragFiles = { [weak self] in try self?.model.dragFiles() ?? [] }
+        view.dragFiles = { [weak self] in
+            guard let self else { return [] }
+            do { return try self.model.dragFiles() } catch {
+                // A stored file was moved or deleted elsewhere: drop the stale
+                // entries so the next drag carries what is still there.
+                self.dragEnded([], operation: [])
+                throw error
+            }
+        }
+        view.onDragEnded = { [weak self] urls, operation in self?.dragEnded(urls, operation: operation) }
         return view
     }()
     private lazy var panel = DropShelfPanel(content: view)
@@ -128,43 +164,47 @@ import QuickLookThumbnailing
         guard !panel.isVisible else { return }
         let point = NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) ?? NSScreen.main else { return }
-        // CG window geometry is available without reading window contents/titles.
-        let top = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
-        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-        let obstacles = windows.prefix(64).compactMap { info -> NSRect? in
-            guard (info[kCGWindowOwnerPID as String] as? Int32) != ProcessInfo.processInfo.processIdentifier,
-                  (info[kCGWindowLayer as String] as? Int) == 0,
-                  let bounds = info[kCGWindowBounds as String] as? [String: Any],
-                  let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { return nil }
-            return NSRect(x: rect.minX, y: top - rect.maxY, width: rect.width, height: rect.height)
-        }
-        panel.setFrame(DropShelf.placement(area: screen.visibleFrame, pointer: point, obstacles: obstacles), display: true)
+        if model.files.isEmpty { view.message = ""; view.needsDisplay = true }
+        panel.setFrame(DropShelf.placement(area: screen.visibleFrame, pointer: point), display: true)
         panel.orderFrontRegardless()
     }
     @discardableResult func accept(_ urls: [URL]) -> Bool {
         do {
-            try model.add(urls); generation += 1
-            view.files = model.files; view.message = ""; view.needsDisplay = true
-            guard let first = model.files.first else { return false }
-            // File-specific icons can synchronously wait on IconServices or
-            // protected-folder access. Finish the drop with a local symbol;
-            // request file previews only after AppKit receives acceptance.
-            view.preview = NSImage(systemSymbolName: first.hasDirectoryPath ? "folder" : "doc", accessibilityDescription: nil)
-            let current = generation
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.generation == current else { return }
-                if let request = self.thumbnailRequest { QLThumbnailGenerator.shared.cancel(request) }
-                let request = QLThumbnailGenerator.Request(fileAt: first, size: NSSize(width: 104, height: 104), scale: self.panel.backingScaleFactor, representationTypes: .all)
-                self.thumbnailRequest = request
-                QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
-                    DispatchQueue.main.async {
-                        guard let self, self.generation == current, let representation else { return }
-                        self.view.preview = representation.nsImage; self.view.needsDisplay = true
-                    }
-                }
-            }
+            try model.add(urls)
+            guard !model.files.isEmpty else { return false }
+            showFiles()
             return true
         } catch { view.message = L("A dropped file is no longer available."); view.needsDisplay = true; return false }
+    }
+    /// A drag out of the box ended. Runs after AppKit has finished the
+    /// session; an emptied box hides exactly as the close button hides it.
+    func dragEnded(_ dragged: [URL], operation: NSDragOperation) {
+        let before = model.files
+        model.finishDrag(dragged: dragged, operation: operation, exists: { FileManager.default.fileExists(atPath: $0.path) })
+        guard model.files != before else { return }
+        if model.files.isEmpty { dismiss() } else { showFiles() }
+    }
+    private func showFiles() {
+        generation += 1
+        view.files = model.files; view.message = ""; view.needsDisplay = true
+        guard let first = model.files.first else { view.preview = nil; return }
+        // File-specific icons can synchronously wait on IconServices or
+        // protected-folder access. Finish the drop with a local symbol;
+        // request file previews only after AppKit receives acceptance.
+        view.preview = NSImage(systemSymbolName: first.hasDirectoryPath ? "folder" : "doc", accessibilityDescription: nil)
+        let current = generation
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.generation == current else { return }
+            if let request = self.thumbnailRequest { QLThumbnailGenerator.shared.cancel(request) }
+            let request = QLThumbnailGenerator.Request(fileAt: first, size: NSSize(width: 104, height: 104), scale: self.panel.backingScaleFactor, representationTypes: .all)
+            self.thumbnailRequest = request
+            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
+                DispatchQueue.main.async {
+                    guard let self, self.generation == current, let representation else { return }
+                    self.view.preview = representation.nsImage; self.view.needsDisplay = true
+                }
+            }
+        }
     }
     func dismiss() {
         generation += 1; model.clear(); view.files = []; view.preview = nil; view.message = ""
@@ -176,6 +216,8 @@ import QuickLookThumbnailing
     var onDrop: (([URL]) -> Bool)?
     var onClose: (() -> Void)?
     var dragFiles: (() throws -> [URL])?
+    var onDragEnded: (([URL], NSDragOperation) -> Void)?
+    private var draggedFiles: [URL] = []
     var files: [URL] = []
     var preview: NSImage?
     var message = ""
@@ -292,13 +334,18 @@ import QuickLookThumbnailing
             let items = urls.enumerated().map { index, url -> NSDraggingItem in
                 let item = NSDraggingItem(pasteboardWriter: url as NSURL)
                 let image = index == 0 ? preview : nil
-                item.setDraggingFrame(NSRect(x: point.x + Double(index % 3) * 4, y: point.y - 32, width: 48, height: 48), contents: image ?? NSImage(systemSymbolName: url.hasDirectoryPath ? "folder" : "doc", accessibilityDescription: nil))
+                let offset = CGFloat(min(index, 5) * 4)
+                item.setDraggingFrame(NSRect(x: point.x - 24 + offset, y: point.y - 24 - offset, width: 48, height: 48), contents: image ?? NSImage(systemSymbolName: url.hasDirectoryPath ? "folder" : "doc", accessibilityDescription: nil))
                 return item
             }
             #if DROP_SHELF_NATIVE_DIAGNOSTICS
             nativeSourceStarts += 1
             #endif
-            beginDraggingSession(with: items, event: event, source: self)
+            draggedFiles = urls
+            let session = beginDraggingSession(with: items, event: event, source: self)
+            session.draggingFormation = .stack
+            // Released where nothing accepts it: the items fly back to the box.
+            session.animatesToStartingPositionsOnCancelOrFail = true
         } catch {
             #if DROP_SHELF_NATIVE_DIAGNOSTICS
             nativeSourceFailures += 1
@@ -306,5 +353,13 @@ import QuickLookThumbnailing
             message = L("A dropped file is no longer available."); needsDisplay = true
         }
     }
-    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        DropShelf.dragOperationMask(for: context)
+    }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        let urls = draggedFiles
+        draggedFiles = []
+        // Let AppKit finish the session before the box may hide.
+        DispatchQueue.main.async { [weak self] in self?.onDragEnded?(urls, operation) }
+    }
 }

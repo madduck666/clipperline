@@ -203,14 +203,81 @@ import XCTest
         XCTAssertThrowsError(try shelf.dragFiles())
         XCTAssertThrowsError(try shelf.add([URL(string: "https://example.com/file")!]))
     }
-    func testPlacementAvoidsWindowsAndPointer() {
-        let area = NSRect(x: 0, y: 0, width: 1200, height: 800)
-        let obstacle = NSRect(x: 0, y: 0, width: 900, height: 800)
-        let pointer = NSPoint(x: 1160, y: 50)
-        let rect = DropShelf.placement(area: area, pointer: pointer, obstacles: [obstacle])
-        XCTAssertTrue(area.contains(rect)); XCTAssertFalse(rect.intersects(obstacle)); XCTAssertFalse(rect.contains(pointer))
+    private func gap(_ rect: NSRect, _ point: NSPoint) -> CGFloat {
+        let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
+        let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
+        return hypot(dx, dy)
+    }
+    func testPlacementOpensNearPointerAndStaysOnScreen() {
+        // A visible frame below a 25 pt menu bar on a secondary screen left of the main one.
+        for area in [NSRect(x: 0, y: 70, width: 1440, height: 805), NSRect(x: -1280, y: 0, width: 1280, height: 775)] {
+            let pointers = [
+                NSPoint(x: area.midX, y: area.midY),
+                NSPoint(x: area.minX + 3, y: area.midY), NSPoint(x: area.maxX - 3, y: area.midY),
+                NSPoint(x: area.midX, y: area.minY + 3), NSPoint(x: area.midX, y: area.maxY - 3),
+                NSPoint(x: area.midX, y: area.maxY + 12), // in the menu bar
+                NSPoint(x: area.minX + 2, y: area.minY + 2), NSPoint(x: area.maxX - 2, y: area.maxY - 2),
+                NSPoint(x: area.minX + 2, y: area.maxY - 2), NSPoint(x: area.maxX - 2, y: area.minY + 2),
+            ]
+            for pointer in pointers {
+                let rect = DropShelf.placement(area: area, pointer: pointer)
+                XCTAssertEqual(rect.size, NSSize(width: 216, height: 228))
+                XCTAssertTrue(area.contains(rect), "Outside the visible frame for \(pointer): \(rect)")
+                XCTAssertFalse(rect.contains(pointer), "Under the pointer at \(pointer): \(rect)")
+                XCTAssertGreaterThan(gap(rect, pointer), 15, "Too close to \(pointer): \(rect)")
+                XCTAssertLessThanOrEqual(gap(rect, pointer), 60, "Too far to reach from \(pointer): \(rect)")
+                XCTAssertLessThanOrEqual(hypot(rect.midX - pointer.x, rect.midY - pointer.y), 260)
+            }
+        }
+        // With room on both sides the box opens just right of the pointer, centred on it.
+        let area = NSRect(x: 0, y: 0, width: 1440, height: 875)
+        let middle = DropShelf.placement(area: area, pointer: NSPoint(x: 700, y: 400))
+        XCTAssertEqual(middle.minX, 732); XCTAssertEqual(middle.midY, 400, accuracy: 1)
+        // At the right edge it opens to the left instead.
+        let right = DropShelf.placement(area: area, pointer: NSPoint(x: 1430, y: 400))
+        XCTAssertEqual(right.maxX, 1398)
+        // A screen smaller than the box still keeps it inside.
         let small = NSRect(x: -400, y: 100, width: 180, height: 200)
-        XCTAssertEqual(DropShelf.placement(area: small, pointer: .zero, obstacles: [small]), small)
+        XCTAssertTrue(small.contains(DropShelf.placement(area: small, pointer: NSPoint(x: -300, y: 150))))
+    }
+    func testDragOutOffersMoveOnlyOutsideTheApp() {
+        XCTAssertEqual(DropShelf.dragOperationMask(for: .outsideApplication), [.copy, .move])
+        XCTAssertEqual(DropShelf.dragOperationMask(for: .withinApplication), .copy)
+    }
+    func testStoredItemsAfterMoveCopyAndCancelledDrag() {
+        let a = URL(fileURLWithPath: "/synthetic/a.txt"), b = URL(fileURLWithPath: "/synthetic/b", isDirectory: true)
+        let c = URL(fileURLWithPath: "/synthetic/c.png")
+        let stored = [a, b, c]
+        func after(_ dragged: [URL], _ operation: NSDragOperation) -> [URL] {
+            DropShelf.filesAfterDrag(stored, dragged: dragged, operation: operation, exists: { _ in true })
+        }
+        XCTAssertEqual(after(stored, .move), [])
+        XCTAssertEqual(after([a, c], .move), [b])
+        XCTAssertEqual(after(stored, .copy), stored)
+        XCTAssertEqual(after(stored, []), stored, "A cancelled drag keeps everything")
+        XCTAssertEqual(after(stored, [.copy, .move]), [], "Any reported move removes the moved items")
+    }
+    func testEndedDragPrunesFilesThatNoLongerExist() throws {
+        let a = URL(fileURLWithPath: "/synthetic/a.txt"), b = URL(fileURLWithPath: "/synthetic/b.txt")
+        for operation in [NSDragOperation.copy, [], .move] {
+            XCTAssertEqual(DropShelf.filesAfterDrag([a, b], dragged: [], operation: operation, exists: { $0 != a }), [b])
+        }
+        // The controller applies the same rule to real files.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let kept = root.appendingPathComponent("kept.txt"), moved = root.appendingPathComponent("moved.txt")
+        try Data("synthetic".utf8).write(to: kept); try Data("synthetic".utf8).write(to: moved)
+        let controller = DropShelfController(); defer { controller.stop() }
+        XCTAssertTrue(controller.accept([kept, moved]))
+        controller.dragEnded([kept, moved], operation: .copy)
+        XCTAssertEqual(controller.model.files, [kept, moved])
+        try FileManager.default.removeItem(at: moved)
+        controller.dragEnded([kept, moved], operation: [])
+        XCTAssertEqual(controller.model.files, [kept])
+        controller.dragEnded([kept], operation: .move)
+        XCTAssertTrue(controller.model.files.isEmpty, "Moved items leave the box")
+        XCTAssertEqual(try String(contentsOf: kept), "synthetic")
     }
     func testControllerAcceptsFilesAndClosePreservesOriginals() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
