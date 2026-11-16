@@ -9,6 +9,7 @@ func L(_ key: String) -> String { key }
 // tracking loop until mouse-up. Drive native input on another thread so its
 // release never depends on resuming a MainActor task inside that loop.
 private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
+    print("Native shelf fixture: Independent source mouse input started"); fflush(stdout)
     var point = start
     func post(_ type: CGEventType, _ location: CGPoint) {
         point = location
@@ -34,6 +35,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         Thread.sleep(forTimeInterval: 0.1)
     }
     guard let frame else { return false }
+    print("Native shelf fixture: Independent source found the shelf"); fflush(stdout)
     let end = CGPoint(x: frame.minX + 40, y: frame.maxY - 70)
     for step in 1...20 {
         let ratio = Double(step) / 20
@@ -200,10 +202,12 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
     func run() async {
         print("Native shelf fixture: Starting AppKit source drag"); fflush(stdout)
         await pause(0.8)
+        print("Native shelf fixture: Initial source pause completed"); fflush(stdout)
         let start = globalPoint(window.convertPoint(toScreen: NSPoint(x: 100, y: 90)))
         let process = ProcessInfo.processInfo.processIdentifier
         lastPoint = start
         let foundShelf = await Task.detached { driveSyntheticDrag(start: start, process: process) }.value
+        print("Native shelf fixture: Independent source mouse input completed"); fflush(stdout)
         await pause(1)
         guard source.starts == 1 else { finish("Posted mouse movement did not start an AppKit drag", success: false); return }
         guard foundShelf, let panel = NSApp.windows.first(where: { $0.isVisible && $0.contentView is DropShelfView }),

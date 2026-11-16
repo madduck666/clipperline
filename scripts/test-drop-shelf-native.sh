@@ -15,25 +15,44 @@ PY
   exit 1
 fi
 python3 - "$OUT/NativeDropTest" "$@" <<'PYNATIVE'
-import os, subprocess, sys
+import os, pathlib, subprocess, sys, tempfile
 for origin in ['temporary', 'downloads']:
     # The second launch retains the normal first-launch choice made through UI
     # in the first trial. Do not demand an onboarding modal that no longer exists.
     environment = dict(os.environ, CLIPBOARDLINE_NATIVE_FIXTURE_ROOT=origin,
                        CLIPBOARDLINE_NATIVE_EXPECT_ONBOARDING='1' if origin == 'temporary' else '0')
     print(f'Native Finder fixture origin: {origin}', flush=True)
+    process = subprocess.Popen(sys.argv[1:], env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
-        result = subprocess.run(sys.argv[1:], env=environment, capture_output=True, text=True, timeout=100)
-        print(result.stdout, end='')
-        print(result.stderr, end='', file=sys.stderr)
-        if result.returncode != 0:
-            sys.exit(result.returncode)
-        if '::notice title=Native shelf drag::All real Finder file, folder and application-bundle drops passed' not in result.stdout:
+        stdout, stderr = process.communicate(timeout=100)
+        print(stdout, end='')
+        print(stderr, end='', file=sys.stderr)
+        if process.returncode != 0:
+            sys.exit(process.returncode)
+        if '::notice title=Native shelf drag::All real Finder file, folder and application-bundle drops passed' not in stdout:
             print('::error title=Native shelf drag::The fixture exited before completing all native drop assertions.')
             sys.exit(1)
     except subprocess.TimeoutExpired as error:
+        # Sample only this generated fixture, never another user's process.
+        # Publish bounded function names, not sample headers or file paths.
+        frames = []
+        try:
+            with tempfile.TemporaryDirectory(prefix='native-shelf-sample-') as directory:
+                sample = pathlib.Path(directory) / 'sample.txt'
+                subprocess.run(['/usr/bin/sample', str(process.pid), '1', '1', '-file', str(sample)],
+                               capture_output=True, text=True, timeout=8)
+                if sample.exists():
+                    for line in sample.read_text(errors='replace').splitlines():
+                        if '(in ' in line and not '/' in line:
+                            frames.append(line.strip())
+                        if len(frames) == 18:
+                            break
+        except (OSError, subprocess.SubprocessError):
+            pass
+        process.kill()
+        stdout, stderr = process.communicate()
         stages = []
-        for output in [error.stdout, error.stderr]:
+        for output in [stdout, stderr]:
             if output:
                 decoded = output.decode(errors='replace') if isinstance(output, bytes) else output
                 print(decoded)
@@ -41,6 +60,9 @@ for origin in ['temporary', 'downloads']:
         stage = stages[-1] if stages else 'No launch milestone reached'
         safe_stage = stage.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
         print(f'::error title=Native shelf drag::The native fixture exceeded 100 seconds; origin={origin}; last stage={safe_stage}; no successful drag result is claimed.')
+        for frame in frames:
+            escaped = frame.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+            print('::error title=Native fixture sampled stack::' + escaped)
         sys.exit(1)
 
 PYNATIVE
