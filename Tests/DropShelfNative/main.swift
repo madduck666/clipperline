@@ -291,7 +291,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
             post(.leftMouseDragged, at: CGPoint(x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio))
             await pause(0.03)
         }
-        await pause(0.3); post(.leftMouseUp, at: end); await pause(1)
+        await pause(0.8); post(.leftMouseUp, at: end); await pause(1)
     }
     func runFinder() async {
         // This is a separate application's real file source, not injected drop
@@ -329,7 +329,15 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         post(.mouseMoved, at: start); await pause(0.1)
         post(.leftMouseDown, at: start); await pause(0.1)
         for step in 1...5 { post(.leftMouseDragged, at: CGPoint(x: start.x + Double(step) * 4, y: start.y)); await pause(0.05) }
+        // Protected folders can take longer to prepare their native payload.
+        // A previously revealed empty panel is not evidence that Finder has
+        // started this drag; wait for the source's new pasteboard generation.
+        for _ in 0..<60 {
+            if board.changeCount != beforeChange { break }
+            await pause(0.05)
+        }
         finderGestureMetadata = "Finder active=\(finder.isActive), role=\(finderCandidateRole), new pasteboard=\(board.changeCount != beforeChange), types=\((board.types ?? []).prefix(16).map(\.rawValue).joined(separator: ","))"
+        guard board.changeCount != beforeChange else { finish("Finder did not start a new native file drag; \(finderGestureMetadata)", success: false); return }
         var frame: NSRect?
         for _ in 0..<20 {
             frame = visibleShelfFrame()
@@ -367,9 +375,18 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         await pause(0.4)
         let start = globalPoint(NSPoint(x: frame.midX, y: frame.minY + 130))
         let end = globalPoint(window.convertPoint(toScreen: NSPoint(x: 100, y: 90)))
+        let board = NSPasteboard(name: .drag), beforeChange = NSPasteboard(name: .drag).changeCount
         post(.mouseMoved, at: start); await pause(0.1)
         post(.leftMouseDown, at: start); await pause(0.1)
-        await moveDrag(from: start, to: end)
+        let begun = CGPoint(x: start.x + 12, y: start.y)
+        post(.leftMouseDragged, at: begun)
+        for _ in 0..<60 {
+            if board.changeCount != beforeChange { break }
+            await pause(0.05)
+        }
+        guard board.changeCount != beforeChange else { finish("Shelf did not start a new native drag-out pasteboard", success: false); return }
+        await pause(0.3)
+        await moveDrag(from: begun, to: end)
         guard source.received.map(\.path) == [source.file.path] else {
             finish("Packaged application did not return the stored Finder file through a native drag; receiver entries=\(source.destinationEntries), prepare=\(source.destinationPreparations), drops=\(source.destinationDrops), received=\(source.received.count)", success: false); return
         }

@@ -24,14 +24,28 @@ SWIFT_BIN="$(dirname "$SWIFTC")"
 SWIFT_HOST_PLUGINS="$SWIFT_BIN/../lib/swift/host/plugins"
 SWIFT_PLUGIN_SERVER="$SWIFT_BIN/swift-plugin-server"
 COMPILER=("$SWIFTC")
-if [ -d "$SWIFT_HOST_PLUGINS" ] && [ -x "$SWIFT_PLUGIN_SERVER" ]; then
+if [ -x "$SWIFT_PLUGIN_SERVER" ]; then
   # Xcode 27's SwiftUI.State uses a compiler macro. SwiftPM supplies this
   # host-plugin search path automatically; direct swiftc needs it as well.
-  COMPILER+=(-external-plugin-path "$SWIFT_HOST_PLUGINS#$SWIFT_PLUGIN_SERVER")
+  for plugin_directory in "$SDK/usr/lib/swift/host/plugins" "$SWIFT_HOST_PLUGINS"; do
+    if [ -d "$plugin_directory" ]; then
+      COMPILER+=(-external-plugin-path "$plugin_directory#$SWIFT_PLUGIN_SERVER")
+    fi
+  done
 fi
-echo "::notice title=Community Swift compiler::$SWIFTC; host plugins=$SWIFT_HOST_PLUGINS"
+echo "::notice title=Community Swift compiler::$SWIFTC; SDK plugins=$SDK/usr/lib/swift/host/plugins; host plugins=$SWIFT_HOST_PLUGINS; plugin server=$SWIFT_PLUGIN_SERVER"
 ARCH="$(uname -m)"
 case "$ARCH" in arm64|x86_64) ;; *) echo "Unsupported build architecture" >&2; exit 1 ;; esac
+
+# Fail with the actual macro configuration error before compiling the full app.
+cat > "$OUT/macro-preflight.swift" <<'SWIFT'
+import SwiftUI
+struct CommunityMacroPreflight: View {
+    @State private var active = false
+    var body: some View { Text("Compiler preflight").onAppear { active = true } }
+}
+SWIFT
+"${COMPILER[@]}" -typecheck -swift-version 5 -sdk "$SDK" -target "$ARCH-apple-macosx14.0" "$OUT/macro-preflight.swift"
 
 python3 - "$ROOT" "$OUT" <<'PY'
 import pathlib, sys
