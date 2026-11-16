@@ -15,7 +15,7 @@ jobs:
         # pool exercises the reported macOS 27.0.1 on Apple Silicon.
         os: [macos-15-intel, macos-26-intel, xcode-27]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

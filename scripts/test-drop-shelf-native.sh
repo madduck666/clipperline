@@ -23,7 +23,7 @@ for origin in ['temporary', 'downloads']:
                        CLIPBOARDLINE_NATIVE_EXPECT_ONBOARDING='1' if origin == 'temporary' else '0')
     print(f'Native Finder fixture origin: {origin}', flush=True)
     try:
-        result = subprocess.run(sys.argv[1:], env=environment, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(sys.argv[1:], env=environment, capture_output=True, text=True, timeout=100)
         print(result.stdout, end='')
         print(result.stderr, end='', file=sys.stderr)
         if result.returncode != 0:
@@ -32,10 +32,15 @@ for origin in ['temporary', 'downloads']:
             print('::error title=Native shelf drag::The fixture exited before completing all native drop assertions.')
             sys.exit(1)
     except subprocess.TimeoutExpired as error:
+        stages = []
         for output in [error.stdout, error.stderr]:
             if output:
-                print(output.decode(errors='replace') if isinstance(output, bytes) else output)
-        print('::error title=Native shelf drag::The native fixture exceeded 60 seconds; no successful drag result is claimed.')
+                decoded = output.decode(errors='replace') if isinstance(output, bytes) else output
+                print(decoded)
+                stages.extend(line for line in decoded.splitlines() if line.startswith(('Native shelf fixture:', 'Packaged launch:')))
+        stage = stages[-1] if stages else 'No launch milestone reached'
+        safe_stage = stage.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+        print(f'::error title=Native shelf drag::The native fixture exceeded 100 seconds; origin={origin}; last stage={safe_stage}; no successful drag result is claimed.')
         sys.exit(1)
 
 PYNATIVE

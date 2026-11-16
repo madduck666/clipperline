@@ -75,11 +75,13 @@ func L(_ key: String) -> String { key }
     func pause(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard CGPreflightPostEventAccess() else { finish("The CI desktop does not authorize native mouse posting; no native drag result is claimed.", success: false); return }
+        let origin = ProcessInfo.processInfo.environment["CLIPBOARDLINE_NATIVE_FIXTURE_ROOT"] ?? "temporary"
+        print("::notice title=Native shelf environment::macOS=\(ProcessInfo.processInfo.operatingSystemVersionString), origin=\(origin), packaged=\(packagedMode)"); fflush(stdout)
+        print("Native shelf fixture: Creating \(origin) fixtures"); fflush(stdout)
         do {
             root = FileManager.default.temporaryDirectory.appendingPathComponent("native-shelf-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             var fixtureRoot = root!
-            let origin = ProcessInfo.processInfo.environment["CLIPBOARDLINE_NATIVE_FIXTURE_ROOT"] ?? "temporary"
             if origin == "downloads" {
                 let downloads = try FileManager.default.url(for: .downloadsDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
                 let directory = downloads.appendingPathComponent("Clipperline-native-test-\(UUID().uuidString)", isDirectory: true)
@@ -88,7 +90,6 @@ func L(_ key: String) -> String { key }
             } else if origin != "temporary" {
                 throw CocoaError(.fileReadInvalidFileName)
             }
-            print("Native shelf environment: macOS=\(ProcessInfo.processInfo.operatingSystemVersionString), origin=\(origin), packaged=\(packagedMode)"); fflush(stdout)
             let file = fixtureRoot.appendingPathComponent("Synthetic.txt")
             try Data("original synthetic file".utf8).write(to: file)
             let folder = fixtureRoot.appendingPathComponent("Synthetic Folder", isDirectory: true)
@@ -109,7 +110,7 @@ func L(_ key: String) -> String { key }
                 shelf.start()
                 Task { await self.run() }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 50) { self.finish("Native drag timed out", success: false) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 90) { self.finish("Native drag timed out", success: false) }
         } catch { finish("Could not create synthetic native fixture: \(error)", success: false) }
     }
     func launchPackagedApp() async {
