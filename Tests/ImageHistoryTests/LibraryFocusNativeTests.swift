@@ -184,6 +184,11 @@ import XCTest
 
     func testExplicitSearchOrSidebarEntrySupersedesPendingResultFocus() throws {
         _ = NSApplication.shared
+        // swift test is a command-line host. Opt this visible-window fixture
+        // into normal activation so AppKit can establish a real key editor.
+        let activationPolicy = NSApp.activationPolicy()
+        XCTAssertTrue(NSApp.setActivationPolicy(.regular))
+        defer { _ = NSApp.setActivationPolicy(activationPolicy) }
         for destination in ["command-search", "pane-search", "pane-sidebar"] {
             let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
             let store = try library(fixture, count: 1)
@@ -226,6 +231,9 @@ import XCTest
 
     func testExplicitSearchOrSidebarEntrySupersedesPendingNewNoteInspectorFocus() throws {
         _ = NSApplication.shared
+        let activationPolicy = NSApp.activationPolicy()
+        XCTAssertTrue(NSApp.setActivationPolicy(.regular))
+        defer { _ = NSApp.setActivationPolicy(activationPolicy) }
         for destination in ["search", "sidebar"] {
             let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
             let store = try library(fixture, count: 1)
