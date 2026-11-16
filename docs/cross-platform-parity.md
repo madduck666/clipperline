@@ -197,6 +197,13 @@ is changed. Trash undo is a bounded, in-process journal; persistent Trash remain
 restorable after restarting. Windows has one application-owned Store and does not
 watch foreign direct JSON edits while running.
 
+Mac query completion can remove the SwiftUI inspector's text editors when it
+clears selection. That native teardown must not clear newer search or sidebar
+focus. The window preserves that external pane only while the focus generations
+are unchanged, the window is active/key and no other responder owns focus; search
+selection is retained. Native focus tests exercise both panes and the selection
+through actual inspector removal. Windows keeps its existing DOM focus behavior.
+
 The genuine Windows upgrade baseline is 1.7.7/build70: 545777945 bytes, SHA256
 `89b9d3d3ddc91d1ddddfb6b07ee73930686d9d2cbbc80a4785746befc9ad9768`,
 source `1c93c163e7e45d102d13c1077dd8baa969eab8ba`. Stage

@@ -255,6 +255,7 @@ import XCTest
             model.onSearchFocus?()
             wait { isEditing(search, in: window) }
             model.search = "Keyboard fixture"
+            controller.toolbarController.refresh()
             XCTAssertTrue(model.focusContent()); XCTAssertTrue(model.loading); XCTAssertTrue(model.contentFocusPending)
             switch destination {
             case "command-search": XCTAssertTrue(window.performKeyEquivalent(with: key(3, "f", [.command])))
@@ -264,9 +265,17 @@ import XCTest
             XCTAssertFalse(model.contentFocusPending, "Explicit pane entry supersedes deferred result focus")
             if destination == "pane-sidebar" { XCTAssertTrue(controller.splitController.isSidebarFocused) }
             else { XCTAssertTrue(isEditing(search, in: window)) }
+            let selection = NSRange(location: 3, length: 4)
+            if destination != "pane-sidebar" {
+                let editor = try XCTUnwrap(search.currentEditor() as? NSTextView)
+                editor.setSelectedRange(selection)
+            }
             wait { !model.loading }
             if destination == "pane-sidebar" { XCTAssertTrue(controller.splitController.isSidebarFocused) }
             else { XCTAssertTrue(isEditing(search, in: window), "The query completion must preserve the newer editor focus; destination=\(destination), active=\(NSApp.isActive), key=\(window.isKeyWindow), responder=\(String(describing: window.firstResponder.map { type(of: $0) }))") }
+            if destination != "pane-sidebar" {
+                XCTAssertEqual((search.currentEditor() as? NSTextView)?.selectedRange(), selection, "Inspector teardown must preserve the search selection")
+            }
         }
     }
 
