@@ -16,20 +16,9 @@ if [ -L "$APP" ] || [ -L "$OUT/Sources" ]; then
 fi
 rm -rf "$OUT/Sources"
 mkdir -p "$OUT/Sources"
-xcrun swift package resolve
+swift package resolve
 test -d "$FRAMEWORK" || { echo "The pinned Sparkle 2.10.0 framework is missing" >&2; exit 1; }
 SDK="${SDKROOT:-$(xcrun --show-sdk-path)}"
-SWIFTC="$(xcrun --find swiftc)"
-SWIFT_BIN="$(dirname "$SWIFTC")"
-SWIFT_HOST_PLUGINS="$SWIFT_BIN/../lib/swift/host/plugins"
-SWIFT_PLUGIN_SERVER="$SWIFT_BIN/swift-plugin-server"
-COMPILER=("$SWIFTC")
-if [ -d "$SWIFT_HOST_PLUGINS" ] && [ -x "$SWIFT_PLUGIN_SERVER" ]; then
-  # Xcode 27's SwiftUI.State uses a compiler macro. SwiftPM supplies this
-  # host-plugin search path automatically; direct swiftc needs it as well.
-  COMPILER+=(-external-plugin-path "$SWIFT_HOST_PLUGINS#$SWIFT_PLUGIN_SERVER")
-fi
-echo "::notice title=Community Swift compiler::$SWIFTC; host plugins=$SWIFT_HOST_PLUGINS"
 ARCH="$(uname -m)"
 case "$ARCH" in arm64|x86_64) ;; *) echo "Unsupported build architecture" >&2; exit 1 ;; esac
 
@@ -55,7 +44,7 @@ for source in sorted((root / 'Sources/Tendedero').glob('*.swift')):
 PY
 OPT=(-O)
 if [ "$CONFIG" = debug ]; then OPT=(-Onone -g); fi
-"${COMPILER[@]}" "${OPT[@]}" -swift-version 5 -sdk "$SDK" -target "$ARCH-apple-macosx14.0" \
+swiftc "${OPT[@]}" -swift-version 5 -sdk "$SDK" -target "$ARCH-apple-macosx14.0" \
   -file-prefix-map "$ROOT=." -module-cache-path "$OUT/ModuleCache" \
   -F "$(dirname "$FRAMEWORK")" -framework Sparkle \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
@@ -86,7 +75,7 @@ for document in THIRD_PARTY_NOTICES.md PRIVACY.md SECURITY.md; do
   if [ -f "$ROOT/$document" ]; then cp "$ROOT/$document" "$STAGE/Contents/Resources/$document"; fi
 done
 
-"${COMPILER[@]}" -sdk "$SDK" -file-prefix-map "$ROOT=." scripts/make-review-icon.swift -o "$OUT/make-icon"
+swiftc -sdk "$SDK" -file-prefix-map "$ROOT=." scripts/make-review-icon.swift -o "$OUT/make-icon"
 "$OUT/make-icon" "$OUT/icon.png"
 sips -z 512 512 "$OUT/icon.png" --out "$OUT/icon512.png" >/dev/null
 python3 - "$ROOT" "$OUT" "$STAGE" <<'PY'

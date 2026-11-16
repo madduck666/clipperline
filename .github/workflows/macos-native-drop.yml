@@ -1,0 +1,15 @@
+name: macOS native drop
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-drop-session:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Native floating shelf drag session
+        run: bash scripts/test-drop-shelf-native.sh
