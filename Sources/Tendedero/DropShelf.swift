@@ -199,7 +199,7 @@ struct DropShelfCard: Equatable {
     private var lastChange = NSPasteboard(name: .drag).changeCount
     private var active = false
     private var generation = 0
-    private var thumbnailRequest: QLThumbnailGenerator.Request?
+    private var thumbnailRequests: [QLThumbnailGenerator.Request] = []
     private lazy var view: DropShelfView = {
         let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
         view.onDrop = { [weak self] urls in self?.accept(urls) ?? false }
@@ -235,7 +235,8 @@ struct DropShelfCard: Equatable {
     }
     func stop() {
         timer?.invalidate(); timer = nil
-        if let thumbnailRequest { QLThumbnailGenerator.shared.cancel(thumbnailRequest) }
+        for request in thumbnailRequests { QLThumbnailGenerator.shared.cancel(request) }
+        thumbnailRequests = []
         dismiss()
     }
     private func poll() {
@@ -284,28 +285,36 @@ struct DropShelfCard: Equatable {
     private func showFiles() {
         generation += 1
         // File-specific icons can synchronously wait on IconServices or
-        // protected-folder access. Finish the drop with the view's own symbol,
-        // name and count (no I/O); the real preview replaces the symbol later.
-        // A stale or failed preview leaves the symbol in place.
-        view.files = model.files; view.message = ""; view.preview = nil; view.needsDisplay = true
-        guard let first = model.files.first else { return }
+        // protected-folder access. Finish the drop with the view's own symbols,
+        // name and count (no I/O); real previews replace the symbols later,
+        // one per shown file. A stale or failed preview leaves its symbol.
+        view.files = model.files; view.message = ""; view.preview = nil; view.previews = [:]; view.needsDisplay = true
+        let shown = DropShelf.stackFiles(model.files)
+        guard !shown.isEmpty else { return }
+        let single = shown.count == 1
         let current = generation
         DispatchQueue.main.async { [weak self] in
             guard let self, self.generation == current else { return }
-            if let request = self.thumbnailRequest { QLThumbnailGenerator.shared.cancel(request) }
-            let request = QLThumbnailGenerator.Request(fileAt: first, size: NSSize(width: 104, height: 104), scale: self.panel.backingScaleFactor, representationTypes: .all)
-            self.thumbnailRequest = request
-            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
-                DispatchQueue.main.async {
-                    guard let self, self.generation == current, let representation,
-                          representation.nsImage.size.width > 0, representation.nsImage.size.height > 0 else { return }
-                    self.view.preview = representation.nsImage; self.view.needsDisplay = true
+            for request in self.thumbnailRequests { QLThumbnailGenerator.shared.cancel(request) }
+            self.thumbnailRequests = []
+            let side: CGFloat = single ? 104 : DropShelfCard.stackSide
+            let scale = single ? self.panel.backingScaleFactor : max(self.panel.backingScaleFactor, 2)
+            for file in shown {
+                let request = QLThumbnailGenerator.Request(fileAt: file, size: NSSize(width: side, height: side), scale: scale, representationTypes: .all)
+                self.thumbnailRequests.append(request)
+                QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
+                    DispatchQueue.main.async {
+                        guard let self, self.generation == current, let representation,
+                              representation.nsImage.size.width > 0, representation.nsImage.size.height > 0 else { return }
+                        if single { self.view.preview = representation.nsImage } else { self.view.previews[file] = representation.nsImage }
+                        self.view.needsDisplay = true
+                    }
                 }
             }
         }
     }
     func dismiss() {
-        generation += 1; model.clear(); view.files = []; view.preview = nil; view.message = ""
+        generation += 1; model.clear(); view.files = []; view.preview = nil; view.previews = [:]; view.message = ""
         panel.orderOut(nil); view.needsDisplay = true
     }
 }
@@ -321,6 +330,8 @@ struct DropShelfCard: Equatable {
     private var draggedFiles: [URL] = []
     var files: [URL] = []
     var preview: NSImage?
+    /// Card thumbnails by file, when several files are held.
+    var previews: [URL: NSImage] = [:]
     var message = ""
     #if DROP_SHELF_NATIVE_DIAGNOSTICS
     // Fixture-only counters contain phases and operation flags, never file paths.
@@ -339,6 +350,7 @@ struct DropShelfCard: Equatable {
     private static let surfaceColor = NSColor(srgbRed: 0.13, green: 0.13, blue: 0.14, alpha: 1)
     private static let primaryTextColor = NSColor.white
     private static let secondaryTextColor = NSColor(white: 1, alpha: 0.72)
+    private static let cardColor = NSColor(srgbRed: 0.24, green: 0.24, blue: 0.26, alpha: 1)
     var shelfDisplay: DropShelfDisplay { DropShelf.display(files: files, message: message) }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -370,11 +382,21 @@ struct DropShelfCard: Equatable {
         let state = shelfDisplay
         // Symbols are template images: drawn directly they come out black on
         // the dark surface. Tint them; real previews are drawn as they are.
-        let box = NSRect(x: bounds.midX - 50, y: 80, width: 100, height: 100)
-        if let preview, preview.size.width > 0, preview.size.height > 0 {
-            preview.draw(in: DropShelf.aspectFit(preview.size, in: box), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        let area = DropShelf.previewArea(in: bounds)
+        let shown = DropShelf.stackFiles(files)
+        if shown.count > 1 {
+            // Several files: a fanned stack, back to front, so every file
+            // behind the front one still shows a strip.
+            for (file, card) in zip(shown, DropShelf.stackLayout(count: shown.count, in: area)) {
+                drawCard(card, image: previews[file], symbol: file.hasDirectoryPath ? "folder" : "doc")
+            }
         } else {
-            drawSymbol(state.symbol, in: box, color: DropShelfView.primaryTextColor)
+            let box = DropShelf.stackLayout(count: 1, in: area).first?.frame ?? NSRect(x: bounds.midX - 50, y: 80, width: 100, height: 100)
+            if let preview, preview.size.width > 0, preview.size.height > 0 {
+                preview.draw(in: DropShelf.aspectFit(preview.size, in: box), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            } else {
+                drawSymbol(state.symbol, in: box, color: DropShelfView.primaryTextColor)
+            }
         }
         func label(_ text: String, y: Double, size: Double, weight: NSFont.Weight, color: NSColor) {
             guard !text.isEmpty else { return }
@@ -384,6 +406,40 @@ struct DropShelfCard: Equatable {
         label(state.title, y: 53, size: 13, weight: .semibold, color: DropShelfView.primaryTextColor)
         label(state.subtitle, y: 31, size: 11, weight: .regular, color: DropShelfView.secondaryTextColor)
         label(state.detail, y: 10, size: 10, weight: .medium, color: state.isWarning ? .systemOrange : DropShelfView.secondaryTextColor)
+    }
+    /// One rounded card of the stack, rotated about its centre: a soft
+    /// shadow, a slightly lighter surface, the thumbnail aspect-fit inside
+    /// (or the tinted symbol until one arrives) and a thin light border.
+    private func drawCard(_ card: DropShelfCard, image: NSImage?, symbol: String) {
+        guard let context = NSGraphicsContext.current else { return }
+        context.saveGraphicsState()
+        defer { context.restoreGraphicsState() }
+        let transform = NSAffineTransform()
+        transform.translateX(by: card.center.x, yBy: card.center.y)
+        transform.rotate(byDegrees: card.rotation)
+        transform.concat()
+        let rect = NSRect(x: -card.size.width / 2, y: -card.size.height / 2, width: card.size.width, height: card.size.height)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 9, yRadius: 9)
+        context.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.5)
+        shadow.shadowBlurRadius = 4
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        shadow.set()
+        DropShelfView.cardColor.setFill()
+        path.fill()
+        context.restoreGraphicsState()
+        context.saveGraphicsState()
+        path.addClip()
+        if let image, image.size.width > 0, image.size.height > 0 {
+            image.draw(in: DropShelf.aspectFit(image.size, in: rect.insetBy(dx: 4, dy: 4)), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        } else {
+            drawSymbol(symbol, in: rect, color: DropShelfView.primaryTextColor)
+        }
+        context.restoreGraphicsState()
+        NSColor.white.withAlphaComponent(0.8).setStroke()
+        path.lineWidth = 1
+        path.stroke()
     }
     /// Draws a template symbol in `color`: the glyph is painted into its own
     /// transparency layer, then recoloured only where the glyph has pixels.
@@ -468,7 +524,7 @@ struct DropShelfCard: Equatable {
             guard !urls.isEmpty else { return }
             let items = urls.enumerated().map { index, url -> NSDraggingItem in
                 let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-                let image = index == 0 ? preview : nil
+                let image = previews[url] ?? (index == 0 ? preview : nil)
                 let offset = CGFloat(min(index, 5) * 4)
                 item.setDraggingFrame(NSRect(x: point.x - 24 + offset, y: point.y - 24 - offset, width: 48, height: 48), contents: image ?? NSImage(systemSymbolName: url.hasDirectoryPath ? "folder" : "doc", accessibilityDescription: nil))
                 return item

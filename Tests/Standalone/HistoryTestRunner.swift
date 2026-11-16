@@ -187,6 +187,8 @@ enum HistoryTestRunner {
             ("testDropShelfDisplayState", dropShelf.testDisplayShowsHintNameOrCountWithoutFileAccess),
             ("testDropShelfPreviewAspectFit", dropShelf.testPreviewKeepsItsProportionsInsideTheIconBox),
             ("testDropShelfDrawsVisibleContent", dropShelf.testShelfDrawsContrastingContentInEveryState),
+            ("testDropShelfStackLayout", dropShelf.testStackLayoutFansUpToFourCardsInsideThePreviewArea),
+            ("testDropShelfDrawsVisibleStack", dropShelf.testSeveralFilesDrawAVisibleStackBeforeAnyThumbnail),
             ("testDropShelfUnreadableDropMessage", dropShelf.testUnreadableDropShowsAMessageInsteadOfABlankBox),
             ("testDropShelfFileReferenceURL", dropShelf.testFileReferenceURLIsStoredByPathAndName),
             ("testNativeVisibilityKeepsWindowContentAndHitCoordinatesFixed", shelfPresentation.testNativeVisibilityKeepsWindowContentAndHitCoordinatesFixed),

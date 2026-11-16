@@ -330,6 +330,99 @@ import XCTest
         }
         return count
     }
+    /// Light pixels inside `rect`, given in the view's unflipped coordinates
+    /// (bitmap rows count from the top).
+    private func brightPixels(_ view: DropShelfView, in rect: NSRect) throws -> Int {
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 216, pixelsHigh: 228, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSColor.clear.setFill(); view.bounds.fill(using: .copy)
+        view.draw(view.bounds)
+        NSGraphicsContext.restoreGraphicsState()
+        var count = 0
+        for x in Int(rect.minX.rounded())..<Int(rect.maxX.rounded()) {
+            for viewY in Int(rect.minY.rounded())..<Int(rect.maxY.rounded()) {
+                guard let color = bitmap.colorAt(x: x, y: 227 - viewY)?.usingColorSpace(.deviceRGB) else { continue }
+                if color.alphaComponent > 0.9, color.redComponent > 0.75, color.greenComponent > 0.75, color.blueComponent > 0.75 { count += 1 }
+            }
+        }
+        return count
+    }
+    func testStackLayoutFansUpToFourCardsInsideThePreviewArea() {
+        let bounds = NSRect(x: 0, y: 0, width: 216, height: 228)
+        let area = DropShelf.previewArea(in: bounds)
+        // Clear of the title (y 53–75), the close button (x 9–37, y ≥ 191) and the view.
+        XCTAssertGreaterThan(area.minY, 75)
+        XCTAssertLessThanOrEqual(area.maxY, 191)
+        XCTAssertGreaterThan(area.minX, 37)
+        XCTAssertLessThanOrEqual(area.maxX, bounds.maxX - 12)
+        XCTAssertTrue(DropShelf.stackLayout(count: 0, in: area).isEmpty)
+        // One file keeps today's single upright 100 pt preview.
+        let one = DropShelf.stackLayout(count: 1, in: area)
+        XCTAssertEqual(one.count, 1)
+        XCTAssertEqual(one.first?.frame, NSRect(x: bounds.midX - 50, y: 80, width: 100, height: 100))
+        XCTAssertEqual(one.first?.rotation, 0)
+        for count in 2...9 {
+            let cards = DropShelf.stackLayout(count: count, in: area)
+            XCTAssertEqual(cards.count, min(count, 4))
+            for card in cards {
+                let box = card.boundingBox
+                XCTAssertGreaterThan(box.minX, area.minX - 0.01, "Card leaves the preview area for \(count)")
+                XCTAssertLessThan(box.maxX, area.maxX + 0.01, "Card leaves the preview area for \(count)")
+                XCTAssertGreaterThan(box.minY, area.minY - 0.01, "Card leaves the preview area for \(count)")
+                XCTAssertLessThan(box.maxY, area.maxY + 0.01, "Card leaves the preview area for \(count)")
+                XCTAssertLessThan(card.size.width, 100, "Stacked cards are smaller than the single preview")
+                XCTAssertGreaterThan(card.size.width, 50)
+            }
+            for i in cards.indices {
+                // Rotations and positions mirror about the stack centre.
+                let mirror = cards[cards.count - 1 - i]
+                XCTAssertEqual(cards[i].rotation, -mirror.rotation, accuracy: 0.0001)
+                XCTAssertEqual(cards[i].center.x - area.midX, area.midX - mirror.center.x, accuracy: 0.0001)
+                XCTAssertLessThanOrEqual(abs(cards[i].rotation), 8)
+                for j in cards.indices where j > i {
+                    // Each card behind leaves a clear strip on its left.
+                    XCTAssertGreaterThan(cards[j].center.x - cards[i].center.x, 15)
+                    XCTAssertGreaterThan(cards[j].boundingBox.minX - cards[i].boundingBox.minX, 15)
+                    XCTAssertNotEqual(cards[i], cards[j])
+                }
+            }
+            XCTAssertNotEqual(cards.first?.rotation, 0, "The stack is fanned")
+        }
+        // Portrait and landscape thumbnails each fit inside their card.
+        let card = DropShelf.stackLayout(count: 3, in: area)[0].frame
+        for size in [NSSize(width: 300, height: 900), NSSize(width: 1600, height: 900)] {
+            let fitted = DropShelf.aspectFit(size, in: card.insetBy(dx: 4, dy: 4))
+            XCTAssertGreaterThan(fitted.minX, card.minX - 0.001); XCTAssertLessThan(fitted.maxX, card.maxX + 0.001)
+            XCTAssertGreaterThan(fitted.minY, card.minY - 0.001); XCTAssertLessThan(fitted.maxY, card.maxY + 0.001)
+            XCTAssertEqual(fitted.width / fitted.height, size.width / size.height, accuracy: 0.001)
+        }
+        // The last four added are shown, the most recent in front (last).
+        let urls = (1...6).map { URL(fileURLWithPath: "/synthetic/\($0).txt") }
+        XCTAssertEqual(DropShelf.stackFiles(urls), Array(urls[2...]))
+        XCTAssertEqual(DropShelf.stackFiles(Array(urls[..<2])), Array(urls[..<2]))
+    }
+    func testSeveralFilesDrawAVisibleStackBeforeAnyThumbnail() throws {
+        _ = NSApplication.shared
+        let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        let area = DropShelf.previewArea(in: view.bounds)
+        let third = area.width / 3
+        let left = NSRect(x: area.minX, y: area.minY, width: third, height: area.height)
+        let right = NSRect(x: area.maxX - third, y: area.minY, width: third, height: area.height)
+        let files = [URL(fileURLWithPath: "/synthetic/a.txt"), URL(fileURLWithPath: "/synthetic/b.png"),
+                     URL(fileURLWithPath: "/synthetic/Photos", isDirectory: true)]
+        view.files = files
+        XCTAssertEqual(view.shelfDisplay.title, String(format: L("%d items"), 3))
+        XCTAssertGreaterThan(try brightPixels(view, in: left), 20, "A card behind the front one must show")
+        XCTAssertGreaterThan(try brightPixels(view, in: right), 20, "The front card must show")
+        // A failed thumbnail for one card never blanks the others.
+        view.previews[files[1]] = NSImage(size: .zero)
+        XCTAssertGreaterThan(try brightPixels(view, in: left), 20)
+        XCTAssertGreaterThan(try brightPixels(view, in: right), 20)
+        // A single file still draws its one large symbol.
+        view.files = [files[0]]; view.previews = [:]
+        XCTAssertGreaterThan(try brightPixels(view, in: area), 100)
+    }
     func testShelfDrawsContrastingContentInEveryState() throws {
         _ = NSApplication.shared
         let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
