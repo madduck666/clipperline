@@ -11,7 +11,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26]
+        # Explicit Intel pools preserve older-OS coverage while the preview
+        # pool exercises the reported macOS 27.0.1 on Apple Silicon.
+        os: [macos-15-intel, macos-26-intel, xcode-27]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
@@ -21,7 +23,7 @@ jobs:
       - name: Native floating shelf drag session
         run: bash scripts/test-drop-shelf-native.sh
   test-and-community-build:
-    runs-on: macos-15
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

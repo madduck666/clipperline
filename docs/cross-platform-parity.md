@@ -263,6 +263,9 @@ the test; tests do not change privacy settings. Packaged mode still requires
 external drag-out and unchanged originals for every fixture. A deferred pasteboard
 provider XCTest separately checks that hover and preparation request no file data.
 
-The configured hosted Mac runners cover macOS 15 and 26. They cannot establish
-compatibility with the reported macOS 27.0.1; a passing native and packaged run
-on that version remains necessary to confirm the reported failure is resolved.
+The native matrix uses the explicit macOS 15/26 Intel pools and the `xcode-27`
+Apple Silicon preview pool. GitHub's published image inventory identifies the
+latter as macOS 27.0.1 (26A434); the fixture prints the actual running OS rather
+than inferring it from the runner label. The full XCTest, community build and
+packaged Finder/Downloads acceptance also run there. A successful run on that
+version remains necessary to confirm the reported failure is resolved.
