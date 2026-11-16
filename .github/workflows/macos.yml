@@ -73,7 +73,6 @@ jobs:
           retention-days: 14
   test-and-community-build:
     runs-on: xcode-27
-    needs: macos-tests
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -154,7 +153,7 @@ jobs:
     concurrency:
       group: clipperline-developer-publication
       cancel-in-progress: false
-    needs: [native-drop-session, test-and-community-build]
+    needs: [native-drop-session, macos-tests, test-and-community-build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
