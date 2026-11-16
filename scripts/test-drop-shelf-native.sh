@@ -54,7 +54,10 @@ for origin in ['temporary', 'downloads']:
                     frames = frames[-8:]
         except (OSError, subprocess.SubprocessError):
             pass
-        os.killpg(process.pid, signal.SIGKILL)
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         stdout, stderr = process.communicate()
         stages = []
         for output in [stdout, stderr]:

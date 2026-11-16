@@ -208,7 +208,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         lastPoint = start
         let driver = Process()
         driver.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
-        driver.arguments = ["--synthetic-driver", String(start.x), String(start.y), String(process)]
+        driver.arguments = ["--synthetic-driver", String(Double(start.x)), String(Double(start.y)), String(process)]
         let foundShelf: Bool
         do {
             let status: Int32 = try await withCheckedThrowingContinuation { continuation in
