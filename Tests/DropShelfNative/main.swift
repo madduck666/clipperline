@@ -73,7 +73,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         dragging = true; starts += 1
         let item = NSDraggingItem(pasteboardWriter: file as NSURL)
         let point = convert(event.locationInWindow, from: nil)
-        item.setDraggingFrame(NSRect(x: point.x, y: point.y, width: 40, height: 40), contents: NSWorkspace.shared.icon(forFile: file.path))
+        item.setDraggingFrame(NSRect(x: point.x, y: point.y, width: 40, height: 40), contents: NSImage(systemSymbolName: "doc", accessibilityDescription: nil))
         beginDraggingSession(with: [item], event: event, source: self)
     }
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { operations }

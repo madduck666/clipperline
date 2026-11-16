@@ -254,6 +254,9 @@ operation without requesting file data during hover or preparation. It reads and
 validates the URLs only in `performDragOperation`, retaining the existing atomic
 100-item limit and local-file checks. This is an AppKit implementation correction;
 the shared drop-shelf behavior and Windows adapter remain unchanged.
+Drop acceptance and drag-out also avoid synchronous file-icon lookups. A local
+symbol appears immediately; Quick Look requests file-specific icons/thumbnails
+after the acceptance callback returns, guarded against dismissal or newer drops.
 
 Native Finder acceptance now repeats each file, folder and application-bundle
 journey with generated fixtures inside the user's Downloads directory as well as

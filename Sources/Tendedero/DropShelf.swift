@@ -137,16 +137,22 @@ import QuickLookThumbnailing
         do {
             try model.add(urls); generation += 1
             view.files = model.files; view.message = ""; view.needsDisplay = true
-            if let thumbnailRequest { QLThumbnailGenerator.shared.cancel(thumbnailRequest) }
             guard let first = model.files.first else { return false }
-            view.preview = NSWorkspace.shared.icon(forFile: first.path)
+            // File-specific icons can synchronously wait on IconServices or
+            // protected-folder access. Finish the drop with a local symbol;
+            // request file previews only after AppKit receives acceptance.
+            view.preview = NSImage(systemSymbolName: first.hasDirectoryPath ? "folder" : "doc", accessibilityDescription: nil)
             let current = generation
-            let request = QLThumbnailGenerator.Request(fileAt: first, size: NSSize(width: 104, height: 104), scale: panel.backingScaleFactor, representationTypes: .thumbnail)
-            thumbnailRequest = request
-            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
-                DispatchQueue.main.async {
-                    guard let self, self.generation == current, let representation else { return }
-                    self.view.preview = representation.nsImage; self.view.needsDisplay = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.generation == current else { return }
+                if let request = self.thumbnailRequest { QLThumbnailGenerator.shared.cancel(request) }
+                let request = QLThumbnailGenerator.Request(fileAt: first, size: NSSize(width: 104, height: 104), scale: self.panel.backingScaleFactor, representationTypes: .all)
+                self.thumbnailRequest = request
+                QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
+                    DispatchQueue.main.async {
+                        guard let self, self.generation == current, let representation else { return }
+                        self.view.preview = representation.nsImage; self.view.needsDisplay = true
+                    }
                 }
             }
             return true
@@ -266,7 +272,8 @@ import QuickLookThumbnailing
             guard !urls.isEmpty else { return }
             let items = urls.enumerated().map { index, url -> NSDraggingItem in
                 let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-                item.setDraggingFrame(NSRect(x: point.x + Double(index % 3) * 4, y: point.y - 32, width: 48, height: 48), contents: NSWorkspace.shared.icon(forFile: url.path))
+                let image = index == 0 ? preview : nil
+                item.setDraggingFrame(NSRect(x: point.x + Double(index % 3) * 4, y: point.y - 32, width: 48, height: 48), contents: image ?? NSImage(systemSymbolName: url.hasDirectoryPath ? "folder" : "doc", accessibilityDescription: nil))
                 return item
             }
             beginDraggingSession(with: items, event: event, source: self)
