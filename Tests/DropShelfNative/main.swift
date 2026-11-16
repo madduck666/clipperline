@@ -14,6 +14,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
     func post(_ type: CGEventType, _ location: CGPoint) {
         point = location
         let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: location, mouseButton: .left)!
+        event.flags = []
         event.setIntegerValueField(.mouseEventClickState, value: 1)
         event.post(tap: .cghidEventTap)
     }
@@ -111,6 +112,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
     func post(_ type: CGEventType, at point: CGPoint) {
         lastPoint = point
         let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left)!
+        event.flags = []
         event.setIntegerValueField(.mouseEventClickState, value: 1)
         event.post(tap: .cghidEventTap)
     }
@@ -296,6 +298,15 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         NSWorkspace.shared.activateFileViewerSelecting([source.file])
         await pause(1.5)
         guard let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) else { finish("Finder is unavailable on the CI desktop", success: false); return }
+        // Use real Finder's icon view so the mouse starts on a file icon, not
+        // an editable filename field or a gallery/preview label. This changes
+        // only the generated fixture's window, never privacy settings.
+        let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: 18, keyDown: true)!
+        keyDown.flags = .maskCommand; keyDown.post(tap: .cghidEventTap)
+        await pause(0.1)
+        let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: 18, keyDown: false)!
+        keyUp.flags = []; keyUp.post(tap: .cghidEventTap)
+        await pause(0.5)
         let application = AXUIElementCreateApplication(finder.processIdentifier)
         var start: CGPoint?
         for _ in 0..<20 {
