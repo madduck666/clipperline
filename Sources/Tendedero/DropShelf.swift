@@ -11,6 +11,28 @@ struct DropShelfDisplay: Equatable {
     var isWarning: Bool
 }
 
+/// One preview card of the box's stack, in the view's (unflipped)
+/// coordinates. `rotation` is in degrees, counterclockwise.
+struct DropShelfCard: Equatable {
+    /// Side of a card when several files are held; thumbnails are requested
+    /// at this size rather than the single preview's size.
+    static let stackSide: CGFloat = 72
+    var center: NSPoint
+    var size: NSSize
+    var rotation: CGFloat
+    /// The card before rotation.
+    var frame: NSRect {
+        NSRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
+    }
+    /// Smallest upright rect containing the rotated card.
+    var boundingBox: NSRect {
+        let radians = Double(rotation) * Double.pi / 180
+        let c = CGFloat(abs(cos(radians))), s = CGFloat(abs(sin(radians)))
+        let width = size.width * c + size.height * s, height = size.width * s + size.height * c
+        return NSRect(x: center.x - width / 2, y: center.y - height / 2, width: width, height: height)
+    }
+}
+
 /// Session-only references. Dismissing the shelf never touches source files.
 @MainActor final class DropShelf {
     private(set) var files: [URL] = []
@@ -77,6 +99,46 @@ struct DropShelfDisplay: Equatable {
         let scale = min(box.width / size.width, box.height / size.height)
         let width = size.width * scale, height = size.height * scale
         return NSRect(x: box.midX - width / 2, y: box.midY - height / 2, width: width, height: height)
+    }
+
+    /// Where previews are drawn: above the title, right of the close button,
+    /// below the grab handle.
+    nonisolated static func previewArea(in bounds: NSRect) -> NSRect {
+        NSRect(x: bounds.midX - 70, y: 78, width: 140, height: 104)
+    }
+
+    /// The files shown as cards, back to front: the last four added, the
+    /// most recently added last (in front).
+    nonisolated static func stackFiles(_ files: [URL]) -> [URL] {
+        Array(files.suffix(4))
+    }
+
+    /// One card: today's single 100 pt preview, upright and centred. Several:
+    /// up to four smaller cards, back to front, spread left to right and
+    /// fanned symmetrically, so a strip of every card behind stays visible.
+    /// Every rotated card lies inside `area`.
+    nonisolated static func stackLayout(count: Int, in area: NSRect) -> [DropShelfCard] {
+        let n = min(max(count, 0), 4)
+        guard n > 0, area.width > 0, area.height > 0 else { return [] }
+        if n == 1 {
+            let side = min(100, area.width, area.height)
+            return [DropShelfCard(center: NSPoint(x: area.midX, y: area.midY), size: NSSize(width: side, height: side), rotation: 0)]
+        }
+        let angles: [CGFloat]
+        switch n {
+        case 2: angles = [6, -6]
+        case 3: angles = [8, 0, -8]
+        default: angles = [8, 3, -3, -8]
+        }
+        let radians = 8 * Double.pi / 180
+        let spread = CGFloat(cos(radians) + sin(radians))
+        let side = min(DropShelfCard.stackSide, area.height / spread, area.width / spread)
+        let step = max(0, min(30, (area.width - side * spread) / CGFloat(n - 1)))
+        return (0..<n).map { index in
+            let offset = (CGFloat(index) - CGFloat(n - 1) / 2) * step
+            return DropShelfCard(center: NSPoint(x: area.midX + offset, y: area.midY),
+                                 size: NSSize(width: side, height: side), rotation: angles[index])
+        }
     }
 
     /// The box opens beside the pointer, near enough to reach while the drag
