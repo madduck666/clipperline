@@ -17,7 +17,10 @@ fi
 python3 - "$OUT/NativeDropTest" "$@" <<'PYNATIVE'
 import os, subprocess, sys
 for origin in ['temporary', 'downloads']:
-    environment = dict(os.environ, CLIPBOARDLINE_NATIVE_FIXTURE_ROOT=origin)
+    # The second launch retains the normal first-launch choice made through UI
+    # in the first trial. Do not demand an onboarding modal that no longer exists.
+    environment = dict(os.environ, CLIPBOARDLINE_NATIVE_FIXTURE_ROOT=origin,
+                       CLIPBOARDLINE_NATIVE_EXPECT_ONBOARDING='1' if origin == 'temporary' else '0')
     print(f'Native Finder fixture origin: {origin}', flush=True)
     try:
         result = subprocess.run(sys.argv[1:], env=environment, capture_output=True, text=True, timeout=60)

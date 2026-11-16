@@ -133,7 +133,8 @@ func L(_ key: String) -> String { key }
                 finish("Packaged application did not finish launching: ready=\(app.isFinishedLaunching), terminated=\(app.isTerminated)", success: false); return
             }
             print("Packaged launch: LaunchServices reports the target application ready"); fflush(stdout)
-            if expectedIdentifier == "org.clipboardline.community" {
+            if expectedIdentifier == "org.clipboardline.community",
+               ProcessInfo.processInfo.environment["CLIPBOARDLINE_NATIVE_EXPECT_ONBOARDING"] != "0" {
                 // A clean runner gets the normal screenshot-onboarding modal.
                 // Decline it through the real UI; never alter privacy settings.
                 let application = AXUIElementCreateApplication(app.processIdentifier)
