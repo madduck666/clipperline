@@ -6,8 +6,12 @@ import XCTest
 
 @MainActor final class LibraryFocusNativeTests: HistoryTestCase {
     private static var launchedApplication = false
-    private func activateTestHost() -> NSApplication.ActivationPolicy {
+    private func activateTestHost() throws -> NSApplication.ActivationPolicy {
         _ = NSApplication.shared
+        guard NSApp.delegate == nil else {
+            XCTFail("The visible native fixture requires a delegate-free test host; application startup was not invoked")
+            throw CocoaError(.featureUnsupported)
+        }
         let previous = NSApp.activationPolicy()
         XCTAssertTrue(NSApp.setActivationPolicy(.regular))
         // XCTest does not enter NSApplication.run(), so complete the AppKit
@@ -203,7 +207,7 @@ import XCTest
     func testExplicitSearchOrSidebarEntrySupersedesPendingResultFocus() throws {
         // swift test is a command-line host. Opt this visible-window fixture
         // into normal activation so AppKit can establish a real key editor.
-        let activationPolicy = activateTestHost()
+        let activationPolicy = try activateTestHost()
         defer { _ = NSApp.setActivationPolicy(activationPolicy) }
         for destination in ["command-search", "pane-search", "pane-sidebar"] {
             let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
@@ -246,7 +250,7 @@ import XCTest
     }
 
     func testExplicitSearchOrSidebarEntrySupersedesPendingNewNoteInspectorFocus() throws {
-        let activationPolicy = activateTestHost()
+        let activationPolicy = try activateTestHost()
         defer { _ = NSApp.setActivationPolicy(activationPolicy) }
         for destination in ["search", "sidebar"] {
             let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
