@@ -42,10 +42,18 @@ jobs:
           # Surface bounded compiler/assertion errors in the run summary as well
           # as logs, so a failed public build is diagnosable without a login.
           python3 - "$RUNNER_TEMP/clipboardline-swift-test.log" <<'PYERRORS'
-          import pathlib, sys
-          errors = [line for line in pathlib.Path(sys.argv[1]).read_text().splitlines()
-                    if 'error:' in line or 'failed -' in line]
-          for line in errors[:15]:
+          import pathlib, re, sys
+          lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
+          # Framework services can emit many unrelated "error:" messages.
+          # Preserve actual assertion/compiler failures before that noise.
+          errors = [line for line in lines if
+                    re.search(r'\.swift:\d+(?::\d+)?: error:', line) or
+                    ('Test Case' in line and 'failed' in line) or
+                    any(marker in line for marker in ['failed -', 'Fatal error:',
+                        'error: Exited', 'Program crashed:', 'unexpected signal'])]
+          if not errors:
+              errors = lines[-20:]
+          for line in errors[:25]:
               escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::error title=Mac test failure::' + escaped)
           PYERRORS
