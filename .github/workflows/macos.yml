@@ -7,7 +7,41 @@ on:
 permissions:
   contents: read
 jobs:
+  cancel-obsolete-developer-runs:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Free Mac capacity occupied by obsolete developer checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          latest="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
+          [ "$latest" = "$GITHUB_SHA" ] || exit 0
+          for state in queued in_progress; do
+            gh api --paginate --method GET "repos/$GH_REPO/actions/workflows/macos.yml/runs" \
+              -f branch=main -f event=push -f status="$state" -f per_page=100 \
+              --jq '.workflow_runs[].id' > "$RUNNER_TEMP/obsolete-mac-runs"
+            while IFS= read -r run_id; do
+              [[ "$run_id" =~ ^[0-9]+$ ]] || exit 1
+              (( run_id < GITHUB_RUN_ID )) || continue
+              publishing="$(gh api "repos/$GH_REPO/actions/runs/$run_id/jobs" \
+                --jq '[.jobs[] | select(.name == "publish-dev-build" and .status == "in_progress")] | length')" || continue
+              # Let an already-started upload finish atomically; its own
+              # publication concurrency deliberately never cancels it.
+              [ "$publishing" = 0 ] || continue
+              if ! gh api --silent --method POST "repos/$GH_REPO/actions/runs/$run_id/cancel"; then
+                echo "::warning::Obsolete run $run_id could not be cancelled; it may already have finished."
+              fi
+            done < "$RUNNER_TEMP/obsolete-mac-runs"
+          done
   native-drop-session:
+    concurrency:
+      group: clipperline-native-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -23,6 +57,9 @@ jobs:
       - name: Native floating shelf drag session
         run: bash scripts/test-drop-shelf-native.sh
   macos-tests:
+    concurrency:
+      group: clipperline-mac-tests-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
@@ -72,6 +109,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   test-and-community-build:
+    concurrency:
+      group: clipperline-mac-package-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: xcode-27
     timeout-minutes: 25
     steps:
