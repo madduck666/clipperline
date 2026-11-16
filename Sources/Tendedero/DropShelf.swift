@@ -112,7 +112,7 @@ import QuickLookThumbnailing
             return
         }
         guard !active, board.changeCount != lastChange,
-              board.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) else { return }
+              board.types?.contains(.fileURL) == true else { return }
         active = true; lastChange = board.changeCount; reveal()
     }
     func reveal() {
@@ -210,9 +210,16 @@ import QuickLookThumbnailing
         if !message.isEmpty { label(message, y: 10, size: 10, color: .systemOrange) }
         else if files.count > 1 { label("\(files.count)", y: 10, size: 11, color: .secondaryLabelColor) }
     }
+    private func canAccept(_ sender: NSDraggingInfo) -> Bool {
+        // Negotiate using metadata only. Finder can defer file data and access
+        // to protected folders until the destination actually receives a drop.
+        // A hover must not depend on materializing URLs or stat-ing Downloads.
+        (sender.draggingSource as? DropShelfView) !== self &&
+            sender.draggingSourceOperationMask.contains(.copy) &&
+            sender.draggingPasteboard.types?.contains(.fileURL) == true
+    }
     private func dropURLs(from sender: NSDraggingInfo) -> [URL]? {
-        guard (sender.draggingSource as? DropShelfView) !== self,
-              sender.draggingSourceOperationMask.contains(.copy),
+        guard canAccept(sender),
               let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
               !urls.isEmpty, urls.count <= 100 else { return nil }
         return urls
@@ -221,7 +228,7 @@ import QuickLookThumbnailing
         #if DROP_SHELF_NATIVE_DIAGNOSTICS
         nativeEntries += 1; nativeSourceMask = sender.draggingSourceOperationMask
         #endif
-        hovering = dropURLs(from: sender) != nil; needsDisplay = true
+        hovering = canAccept(sender); needsDisplay = true
         return hovering ? .copy : []
     }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
@@ -230,9 +237,9 @@ import QuickLookThumbnailing
         #if DROP_SHELF_NATIVE_DIAGNOSTICS
         nativePreparations += 1
         #endif
-        // Revalidate at mouse-up as well as during hover, before importing.
-        // The source may have changed its payload or permitted operations.
-        return dropURLs(from: sender) != nil
+        // Revalidate the advertised type and operation, but wait for perform
+        // before requesting the actual file URLs and their access grant.
+        return canAccept(sender)
     }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         #if DROP_SHELF_NATIVE_DIAGNOSTICS

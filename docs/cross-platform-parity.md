@@ -246,3 +246,23 @@ packaged check runs after the community build. Neither mode calls destination
 callbacks to simulate a successful drop. Missing input/accessibility authorization
 fails the test without changing macOS privacy settings. This does not cover
 multiple physical displays or native Windows Explorer drag negotiation.
+
+### Finder destination negotiation and Downloads coverage
+
+The Mac destination negotiates the advertised `public.file-url` type and copy
+operation without requesting file data during hover or preparation. It reads and
+validates the URLs only in `performDragOperation`, retaining the existing atomic
+100-item limit and local-file checks. This is an AppKit implementation correction;
+the shared drop-shelf behavior and Windows adapter remain unchanged.
+
+Native Finder acceptance now repeats each file, folder and application-bundle
+journey with generated fixtures inside the user's Downloads directory as well as
+the temporary directory. It removes only its own unique fixture directory and
+prints the actual OS version and fixture origin. Downloads privacy denial fails
+the test; tests do not change privacy settings. Packaged mode still requires
+external drag-out and unchanged originals for every fixture. A deferred pasteboard
+provider XCTest separately checks that hover and preparation request no file data.
+
+The configured hosted Mac runners cover macOS 15 and 26. They cannot establish
+compatibility with the reported macOS 27.0.1; a passing native and packaged run
+on that version remains necessary to confirm the reported failure is resolved.

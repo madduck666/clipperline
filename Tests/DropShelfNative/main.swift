@@ -42,6 +42,7 @@ func L(_ key: String) -> String { key }
     var window: NSWindow!
     var source: NativeSource!
     var root: URL!
+    var downloadsRoot: URL?
     var lastPoint = CGPoint.zero
     var finished = false
     var packagedApp: NSRunningApplication?
@@ -57,6 +58,7 @@ func L(_ key: String) -> String { key }
         }
         if let packagedApp, !packagedApp.isTerminated { packagedApp.terminate() }
         if let root { try? FileManager.default.removeItem(at: root) }
+        if let downloadsRoot { try? FileManager.default.removeItem(at: downloadsRoot) }
         print("::\(success ? "notice" : "error") title=Native shelf drag::\(message)")
         fflush(stdout)
         exit(success ? 0 : 1)
@@ -76,10 +78,21 @@ func L(_ key: String) -> String { key }
         do {
             root = FileManager.default.temporaryDirectory.appendingPathComponent("native-shelf-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            let file = root.appendingPathComponent("Synthetic.txt")
+            var fixtureRoot = root!
+            let origin = ProcessInfo.processInfo.environment["CLIPBOARDLINE_NATIVE_FIXTURE_ROOT"] ?? "temporary"
+            if origin == "downloads" {
+                let downloads = try FileManager.default.url(for: .downloadsDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+                let directory = downloads.appendingPathComponent("Clipperline-native-test-\(UUID().uuidString)", isDirectory: true)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                downloadsRoot = directory; fixtureRoot = directory
+            } else if origin != "temporary" {
+                throw CocoaError(.fileReadInvalidFileName)
+            }
+            print("Native shelf environment: macOS=\(ProcessInfo.processInfo.operatingSystemVersionString), origin=\(origin), packaged=\(packagedMode)"); fflush(stdout)
+            let file = fixtureRoot.appendingPathComponent("Synthetic.txt")
             try Data("original synthetic file".utf8).write(to: file)
-            let folder = root.appendingPathComponent("Synthetic Folder", isDirectory: true)
-            let bundle = root.appendingPathComponent("Synthetic Application.app", isDirectory: true)
+            let folder = fixtureRoot.appendingPathComponent("Synthetic Folder", isDirectory: true)
+            let bundle = fixtureRoot.appendingPathComponent("Synthetic Application.app", isDirectory: true)
             for directory in [folder, bundle] {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 try Data("original folder contents".utf8).write(to: directory.appendingPathComponent("Marker.txt"))

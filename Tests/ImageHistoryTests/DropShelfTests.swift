@@ -4,6 +4,16 @@ import XCTest
 @testable import Tendedero
 #endif
 
+@MainActor private final class DeferredShelfFile: NSObject {
+    let file: URL
+    var requests = 0
+    init(file: URL) { self.file = file }
+    @objc func pasteboard(_ sender: NSPasteboard, provideDataForType type: NSPasteboard.PasteboardType) {
+        requests += 1
+        sender.setString(file.absoluteString, forType: type)
+    }
+}
+
 /// Native pasteboard payload and operation metadata, with no user clipboard or
 /// posted mouse events. Tests drive the real destination's entire handshake.
 @MainActor private final class ShelfDropInfo: NSObject, NSDraggingInfo {
@@ -115,6 +125,45 @@ import XCTest
         XCTAssertFalse(view.prepareForDragOperation(info))
         XCTAssertFalse(view.performDragOperation(info))
         XCTAssertEqual(drops, 0, "Rejected drops must not reach the file store")
+        XCTAssertEqual(try String(contentsOf: file), "original")
+    }
+
+    func testAdvertisedFileTypeCanHoverBeforeFileDataIsAvailable() {
+        let board = NSPasteboard(name: .init("drop-shelf-delayed-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        // An advertised type is sufficient for negotiation. Missing/invalid
+        // file data still must never be imported when the mouse is released.
+        board.declareTypes([.fileURL], owner: nil)
+        let info = ShelfDropInfo(board: board)
+        let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        var drops = 0
+        view.onDrop = { _ in drops += 1; return true }
+        XCTAssertEqual(view.draggingEntered(info), .copy)
+        XCTAssertEqual(view.draggingUpdated(info), .copy)
+        XCTAssertTrue(view.prepareForDragOperation(info))
+        XCTAssertFalse(view.performDragOperation(info))
+        XCTAssertEqual(drops, 0)
+    }
+
+    func testDeferredFinderFileIsReadOnlyWhenDropped() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+        try Data("original".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let owner = DeferredShelfFile(file: file)
+        let board = NSPasteboard(name: .init("drop-shelf-provider-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        board.declareTypes([.fileURL], owner: owner)
+        let info = ShelfDropInfo(board: board)
+        let controller = DropShelfController(); defer { controller.stop() }
+        let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        view.onDrop = { controller.accept($0) }
+        XCTAssertEqual(view.draggingEntered(info), .copy)
+        XCTAssertEqual(view.draggingUpdated(info), .copy)
+        XCTAssertTrue(view.prepareForDragOperation(info))
+        XCTAssertEqual(owner.requests, 0, "Negotiation must not request deferred file data")
+        XCTAssertTrue(view.performDragOperation(info))
+        XCTAssertGreaterThan(owner.requests, 0)
+        XCTAssertEqual(try controller.model.dragFiles(), [file])
         XCTAssertEqual(try String(contentsOf: file), "original")
     }
 
