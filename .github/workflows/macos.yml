@@ -6,14 +6,13 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-# Never cancel a run: an in-flight developer-build publication must finish.
-concurrency:
-  group: clipperline-macos-${{ github.ref }}
-  cancel-in-progress: false
 jobs:
-  test-and-community-build:
-    runs-on: macos-15
-    timeout-minutes: 45
+  macos-tests:
+    concurrency:
+      group: clipperline-mac-tests-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: macos-15-intel
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -50,6 +49,56 @@ jobs:
           exit 1
         env:
           CLIPBOARDLINE_PARITY_REPORT: validation/parity/macos.json
+      - name: Check localization
+        run: swift scripts/check-strings.swift
+      - name: Preserve exact-source Mac parity observations
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: clipboardline-macos-parity-${{ github.sha }}
+          path: validation/parity/macos.json
+          if-no-files-found: error
+          retention-days: 14
+  test-and-community-build:
+    concurrency:
+      group: clipperline-mac-package-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: xcode-27
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Shared version and parity guard tests
+        run: |
+          python3 scripts/check-release-version.py --require-windows
+          python3 scripts/test-cross-platform-parity.py
+          python3 scripts/test-mac-dev-update.py
+      - name: macOS 27 drop destination regression tests
+        run: |
+          set -o pipefail
+          if swift test --filter DropShelfTests 2>&1 | tee "$RUNNER_TEMP/clipboardline-swift-test.log"; then
+            exit 0
+          fi
+          # Surface bounded compiler/assertion errors in the run summary as well
+          # as logs, so a failed public build is diagnosable without a login.
+          python3 - "$RUNNER_TEMP/clipboardline-swift-test.log" <<'PYERRORS'
+          import pathlib, re, sys
+          lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
+          # Framework services can emit many unrelated "error:" messages.
+          # Preserve actual assertion/compiler failures before that noise.
+          errors = [line for line in lines if
+                    re.search(r'\.swift:\d+(?::\d+)?: error:', line) or
+                    ('Test Case' in line and 'failed' in line) or
+                    any(marker in line for marker in ['failed -', 'Fatal error:',
+                        'error: Exited', 'Program crashed:', 'unexpected signal'])]
+          if not errors:
+              errors = lines[-20:]
+          for line in errors[:25]:
+              escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::error title=Mac test failure::' + escaped)
+          PYERRORS
+          exit 1
       - name: Check localization
         run: swift scripts/check-strings.swift
       - name: Build isolated, keyless developer application
@@ -99,14 +148,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
-      - name: Preserve exact-source Mac parity observations
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: clipboardline-macos-parity-${{ github.sha }}
-          path: validation/parity/macos.json
-          if-no-files-found: error
-          retention-days: 14
   # The keyless developer build of the latest tested main, at a fixed public
   # address for scripts/mac-dev-update.sh. A pre-release, never the Latest
   # release, so it cannot shadow an official signed release.
@@ -114,7 +155,7 @@ jobs:
     concurrency:
       group: clipperline-developer-publication
       cancel-in-progress: false
-    needs: test-and-community-build
+    needs: [macos-tests, test-and-community-build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:

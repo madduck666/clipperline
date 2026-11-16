@@ -5,11 +5,16 @@ permissions:
   contents: read
 jobs:
   native-drop-session:
-    runs-on: macos-15
-    timeout-minutes: 10
+    runs-on: xcode-27
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Native floating shelf drag session
-        run: bash scripts/test-drop-shelf-native.sh
+      - name: Build isolated, keyless developer application
+        run: bash scripts/build-community.sh
+        env:
+          CLIPBOARDLINE_DEV_BUILD: ${{ github.sha }}
+          CLIPBOARDLINE_DEV_REPOSITORY: ${{ github.repository }}
+      - name: Finder drop and drag-out through the actual packaged application
+        run: bash scripts/test-drop-shelf-native.sh "$PWD/build/Clipperline.app"
