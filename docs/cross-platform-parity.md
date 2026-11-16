@@ -257,6 +257,11 @@ the shared drop-shelf behavior and Windows adapter remain unchanged.
 Drop acceptance and drag-out also avoid synchronous file-icon lookups. A local
 symbol appears immediately; Quick Look requests file-specific icons/thumbnails
 after the acceptance callback returns, guarded against dismissal or newer drops.
+The rounded interior has opaque backing pixels, including blank areas. Faint
+background pixels can leave WindowServer input holes until a drag crosses an
+opaque icon and paints the hover highlight, making results depend on the source
+window position and approach path. The bitmap test requires opacity at blank
+points, while native Finder trials verify actual destination routing.
 
 Native Finder acceptance now repeats each file, folder and application-bundle
 journey with generated fixtures inside the user's Downloads directory as well as

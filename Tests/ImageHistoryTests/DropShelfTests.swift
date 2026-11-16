@@ -83,7 +83,7 @@ import XCTest
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
     }
 
-    func testBlankDropSurfaceHasBackingPixelsForWindowServerHitTesting() throws {
+    func testBlankDropSurfaceIsOpaqueForWindowServerHitTesting() throws {
         _ = NSApplication.shared
         let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
         let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 216, pixelsHigh: 228, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
@@ -93,10 +93,11 @@ import XCTest
         NSColor.clear.setFill(); view.bounds.fill(using: .copy)
         view.draw(view.bounds)
         // Empty areas away from the icon, text and buttons must still have
-        // pixels; a material rendered behind the window is not sufficient.
+        // opaque pixels; behind-window material or a faint fill is insufficient
+        // when a drag approaches through the blank area without crossing icons.
         for point in [(20, 70), (195, 70), (20, 150), (195, 150)] {
             let color = try XCTUnwrap(bitmap.colorAt(x: point.0, y: point.1))
-            XCTAssertGreaterThan(color.alphaComponent, 0.01)
+            XCTAssertGreaterThan(color.alphaComponent, 0.99)
         }
     }
 

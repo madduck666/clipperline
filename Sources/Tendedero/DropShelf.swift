@@ -197,10 +197,12 @@ import QuickLookThumbnailing
     @objc private func closeShelf() { onClose?() }
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        // Behind-window blur is composed by WindowServer. Give the entire
-        // rounded surface real backing pixels too, so blank areas of this
-        // transparent window do not become pointer/drag pass-through holes.
-        NSColor.windowBackgroundColor.withAlphaComponent(0.08).setFill()
+        // Behind-window material does not guarantee an input region. A faint
+        // fill can still pass through on blank-area approaches; entering over
+        // an icon first merely hides that bug by painting the hover highlight.
+        // Keep every interior pixel opaque so WindowServer targets this panel
+        // before any destination callback or protected-file read is required.
+        NSColor.windowBackgroundColor.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 25, yRadius: 25).fill()
         NSColor.white.withAlphaComponent(0.3).setFill()
         NSBezierPath(roundedRect: NSRect(x: bounds.midX - 18, y: bounds.height - 13, width: 36, height: 4), xRadius: 2, yRadius: 2).fill()
