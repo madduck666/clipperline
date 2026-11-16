@@ -265,7 +265,9 @@ provider XCTest separately checks that hover and preparation request no file dat
 
 The native matrix uses the explicit macOS 15/26 Intel pools and the `xcode-27`
 Apple Silicon preview pool. GitHub's published image inventory identifies the
-latter as macOS 27.0.1 (26A434); the fixture prints the actual running OS rather
-than inferring it from the runner label. The full XCTest, community build and
-packaged Finder/Downloads acceptance also run there. A successful run on that
-version remains necessary to confirm the reported failure is resolved.
+latter as macOS 27.0.1 (26A434), but observed runs already report macOS 27.2.
+The fixture prints the actual running OS rather than inferring it from the
+runner label. The full XCTest, community build and packaged Finder/Downloads
+acceptance also run there. This preview pool is not pinned to 27.0.1; a
+successful run on that exact version remains necessary to confirm the reported
+failure is resolved.

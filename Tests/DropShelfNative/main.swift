@@ -5,6 +5,45 @@ import ApplicationServices
 // and synthetic drag-source windows belong to the fixture, not a second shelf.
 func L(_ key: String) -> String { key }
 
+// Some AppKit versions keep the source's mouseDragged callback inside a
+// tracking loop until mouse-up. Drive native input on another thread so its
+// release never depends on resuming a MainActor task inside that loop.
+private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
+    var point = start
+    func post(_ type: CGEventType, _ location: CGPoint) {
+        point = location
+        let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: location, mouseButton: .left)!
+        event.setIntegerValueField(.mouseEventClickState, value: 1)
+        event.post(tap: .cghidEventTap)
+    }
+    defer { post(.leftMouseUp, point) }
+    post(.mouseMoved, start); Thread.sleep(forTimeInterval: 0.1)
+    post(.leftMouseDown, start); Thread.sleep(forTimeInterval: 0.1)
+    post(.leftMouseDragged, CGPoint(x: start.x + 20, y: start.y))
+    var frame: CGRect?
+    for _ in 0..<40 {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        frame = windows.compactMap { info -> CGRect? in
+            guard (info[kCGWindowOwnerPID as String] as? Int32) == process,
+                  let bounds = info[kCGWindowBounds as String] as? [String: Any],
+                  let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+                  abs(rect.width - 216) < 2, abs(rect.height - 228) < 2 else { return nil }
+            return rect
+        }.first
+        if frame != nil { break }
+        Thread.sleep(forTimeInterval: 0.1)
+    }
+    guard let frame else { return false }
+    let end = CGPoint(x: frame.minX + 40, y: frame.maxY - 70)
+    for step in 1...20 {
+        let ratio = Double(step) / 20
+        post(.leftMouseDragged, CGPoint(x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio))
+        Thread.sleep(forTimeInterval: 0.03)
+    }
+    Thread.sleep(forTimeInterval: 0.3)
+    return true
+}
+
 @MainActor final class NativeSource: NSView, NSDraggingSource {
     var file: URL!
     var operations: NSDragOperation = .copy
@@ -158,24 +197,13 @@ func L(_ key: String) -> String { key }
         print("Native shelf fixture: Starting AppKit source drag"); fflush(stdout)
         await pause(0.8)
         let start = globalPoint(window.convertPoint(toScreen: NSPoint(x: 100, y: 90)))
-        post(.mouseMoved, at: start); await pause(0.1)
-        post(.leftMouseDown, at: start); await pause(0.1)
-        post(.leftMouseDragged, at: CGPoint(x: start.x + 20, y: start.y)); await pause(0.4)
-        guard source.starts == 1 else { finish("Posted mouse movement did not start an AppKit drag", success: false); return }
-        var panel: NSWindow?
-        for _ in 0..<20 {
-            panel = NSApp.windows.first { $0.isVisible && $0.contentView is DropShelfView }
-            if panel != nil { break }; await pause(0.1)
-        }
-        guard let panel, let target = panel.contentView as? DropShelfView else { finish("Actual AppKit drag did not automatically reveal the shelf", success: false); return }
-        let end = globalPoint(panel.convertPoint(toScreen: NSPoint(x: 40, y: 70)))
-        for step in 1...20 {
-            let ratio = Double(step) / 20
-            post(.leftMouseDragged, at: CGPoint(x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio))
-            await pause(0.03)
-        }
-        await pause(0.3); post(.leftMouseUp, at: end)
+        let process = ProcessInfo.processInfo.processIdentifier
+        lastPoint = start
+        let foundShelf = await Task.detached { driveSyntheticDrag(start: start, process: process) }.value
         await pause(1)
+        guard source.starts == 1 else { finish("Posted mouse movement did not start an AppKit drag", success: false); return }
+        guard foundShelf, let panel = NSApp.windows.first(where: { $0.isVisible && $0.contentView is DropShelfView }),
+              let target = panel.contentView as? DropShelfView else { finish("Actual AppKit drag did not automatically reveal the shelf", success: false); return }
         let summary = "starts=\(source.starts), entries=\(target.nativeEntries), prepare=\(target.nativePreparations), drops=\(target.nativeDropAttempts), mask=\(target.nativeSourceMask.rawValue), result=\(source.completed?.rawValue ?? 0), stored=\(shelf.model.files.count)"
         guard shelf.model.files.map(\.path) == [source.file.path], panel.isVisible else { finish(summary, success: false); return }
         guard (try? String(contentsOf: source.file)) == "original synthetic file" else { finish("Original source changed", success: false); return }
