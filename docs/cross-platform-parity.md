@@ -271,8 +271,8 @@ the test; tests do not change privacy settings. Packaged mode still requires
 external drag-out and unchanged originals for every fixture. A deferred pasteboard
 provider XCTest separately checks that hover and preparation request no file data.
 
-The native matrix uses the explicit macOS 15/26 Intel pools and the `xcode-27`
-Apple Silicon preview pool. GitHub's published image inventory identifies the
+The native matrix uses the macOS 15 Intel baseline, the original macOS 26
+Apple Silicon baseline and the `xcode-27` Apple Silicon preview pool. GitHub's published image inventory identifies the
 latter as macOS 27.0.1 (26A434), but observed runs already report macOS 27.2.
 The fixture prints the actual running OS rather than inferring it from the
 runner label. Full XCTest and the shared behavior reports retain the macOS 15

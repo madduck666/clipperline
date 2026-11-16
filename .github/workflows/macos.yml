@@ -45,9 +45,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Explicit Intel pools preserve older-OS coverage while the preview
-        # pool exercises macOS 27 on Apple Silicon (actual version logged).
-        os: [macos-15-intel, macos-26-intel, xcode-27]
+        # Retain the original macOS 26 Apple Silicon baseline and the macOS 15
+        # Intel baseline; preview hosts report their actual macOS 27 version.
+        os: [macos-15-intel, macos-26, xcode-27]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:

@@ -92,6 +92,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
     var packagedApp: NSRunningApplication?
     var finderFixtures: [URL] = []
     var finderTrial = 0
+    var finderCandidateRole = "", finderGestureMetadata = ""
     var packagedMode: Bool { CommandLine.arguments.count > 1 }
     func finish(_ message: String, success: Bool) {
         guard !finished else { return }; finished = true
@@ -150,6 +151,9 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
             source = NativeSource(frame: NSRect(x: 0, y: 0, width: 260, height: 180)); source.file = file
             window = NSWindow(contentRect: NSRect(x: 250, y: 250, width: 260, height: 180), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false; window.title = "Synthetic drag source"; window.contentView = source
+            // A real receiving surface must remain above Finder even when
+            // macOS declines a background process's activation request.
+            window.level = .floating
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
             if packagedMode {
                 window.orderOut(nil)
@@ -260,6 +264,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
            CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID() {
             var point = CGPoint.zero, dimensions = CGSize.zero
             if AXValueGetValue(position as! AXValue, .cgPoint, &point), AXValueGetValue(size as! AXValue, .cgSize, &dimensions), dimensions.width > 0, dimensions.height > 0 {
+                finderCandidateRole = attribute(element, kAXRoleAttribute) as? String ?? "unknown"
                 return CGPoint(x: point.x + min(dimensions.width / 2, 100), y: point.y + dimensions.height / 2)
             }
         }
@@ -320,9 +325,11 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
             if start != nil { break }; await pause(0.2)
         }
         guard let start else { finish("Could not locate the generated file in Finder's accessibility tree", success: false); return }
+        let board = NSPasteboard(name: .drag), beforeChange = NSPasteboard(name: .drag).changeCount
         post(.mouseMoved, at: start); await pause(0.1)
         post(.leftMouseDown, at: start); await pause(0.1)
         for step in 1...5 { post(.leftMouseDragged, at: CGPoint(x: start.x + Double(step) * 4, y: start.y)); await pause(0.05) }
+        finderGestureMetadata = "Finder active=\(finder.isActive), role=\(finderCandidateRole), new pasteboard=\(board.changeCount != beforeChange), types=\((board.types ?? []).prefix(16).map(\.rawValue).joined(separator: ","))"
         var frame: NSRect?
         for _ in 0..<20 {
             frame = visibleShelfFrame()
@@ -345,7 +352,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         await moveDrag(from: start, to: end)
         if packagedMode { await verifyPackagedDragOut(frame: frame); return }
         guard let target else { finish("Missing local shelf diagnostics", success: false); return }
-        let summary = "Finder: entries=\(target.nativeEntries - beforeEntries), prepare=\(target.nativePreparations - beforePreparations), drops=\(target.nativeDropAttempts - beforeDrops), mask=\(target.nativeSourceMask.rawValue), stored=\(shelf.model.files.count)"
+        let summary = "Finder: entries=\(target.nativeEntries - beforeEntries), prepare=\(target.nativePreparations - beforePreparations), drops=\(target.nativeDropAttempts - beforeDrops), mask=\(target.nativeSourceMask.rawValue), stored=\(shelf.model.files.count); \(finderGestureMetadata)"
         guard shelf.model.files.map(\.path) == [source.file.path], visibleShelfFrame() != nil else { finish(summary, success: false); return }
         guard originalPreserved() else { finish("Finder source changed", success: false); return }
         await nextFinderTrial(summary)
@@ -356,6 +363,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         let x = frame.midX < screen.midX ? screen.maxX - 300 : screen.minX + 40
         window.setFrameOrigin(NSPoint(x: x, y: screen.midY - 90))
         window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        window.orderFrontRegardless()
         await pause(0.4)
         let start = globalPoint(NSPoint(x: frame.midX, y: frame.minY + 130))
         let end = globalPoint(window.convertPoint(toScreen: NSPoint(x: 100, y: 90)))
