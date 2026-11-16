@@ -320,10 +320,21 @@ import XCTest
     }
     func testMetadataCancellationDoesNotWriteLateResultOrRevealShelf() throws {
         let f = try SyntheticFixture(); defer { f.cleanup() }; let store = try library(f)
-        let id = try store.captureLink(URL(string: "https://example.com/cancel")!).id; var enabled = true, calls = 0
-        let service = LinkMetadataService(store: store, enabled: { enabled }, fetch: { _ in calls += 1; try? await Task.sleep(nanoseconds: 30_000_000); return LinkMetadata(title: "late result") })
-        service.request([id]); wait { calls == 1 }; enabled = false; service.stop(); RunLoop.current.run(until: Date().addingTimeInterval(0.08))
-        XCTAssertEqual(try store.item(id)?.title, ""); XCTAssertEqual(try store.item(id)?.metadataState, "pending"); XCTAssertEqual(service.pendingCount, 0)
+        let id = try store.captureLink(URL(string: "https://example.com/cancel")!).id; var enabled = true
+        var response: CheckedContinuation<LinkMetadata, Never>?, returned = false
+        let service = LinkMetadataService(store: store, enabled: { enabled }, fetch: { _ in
+            let metadata = await withCheckedContinuation { (continuation: CheckedContinuation<LinkMetadata, Never>) in response = continuation }
+            returned = true
+            return metadata
+        })
+        // A timed fake response can finish before the test regains the busy
+        // main run loop. Release it explicitly only after cancellation, so this
+        // always exercises a late result from a cancellation-ignoring fetch.
+        service.request([id]); wait { response != nil }; enabled = false; service.stop()
+        try XCTUnwrap(response).resume(returning: LinkMetadata(title: "late result"))
+        wait { returned }; RunLoop.current.run(until: Date().addingTimeInterval(0.08))
+        XCTAssertEqual(try store.item(id)?.title, ""); XCTAssertNil(try store.item(id)?.metadataTitle)
+        XCTAssertEqual(try store.item(id)?.metadataState, "pending"); XCTAssertEqual(service.pendingCount, 0)
     }
     func testManualMetadataRefreshBypassesCacheAndKeepsUserTitle() throws {
         let f = try SyntheticFixture(); defer { f.cleanup() }; let store = try library(f)

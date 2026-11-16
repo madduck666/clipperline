@@ -197,6 +197,13 @@ is changed. Trash undo is a bounded, in-process journal; persistent Trash remain
 restorable after restarting. Windows has one application-owned Store and does not
 watch foreign direct JSON edits while running.
 
+Mac query completion can remove the SwiftUI inspector's text editors when it
+clears selection. That native teardown must not clear newer search or sidebar
+focus. The window preserves that external pane only while the focus generations
+are unchanged, the window is active/key and no other responder owns focus; search
+selection is retained. Native focus tests exercise both panes and the selection
+through actual inspector removal. Windows keeps its existing DOM focus behavior.
+
 The genuine Windows upgrade baseline is 1.7.7/build70: 545777945 bytes, SHA256
 `89b9d3d3ddc91d1ddddfb6b07ee73930686d9d2cbbc80a4785746befc9ad9768`,
 source `1c93c163e7e45d102d13c1077dd8baa969eab8ba`. Stage
@@ -271,8 +278,10 @@ the test; tests do not change privacy settings. Packaged mode still requires
 external drag-out and unchanged originals for every fixture. A deferred pasteboard
 provider XCTest separately checks that hover and preparation request no file data.
 
-The native matrix uses the macOS 15 Intel baseline, the original macOS 26
-Apple Silicon baseline and the `xcode-27` Apple Silicon preview pool. GitHub's published image inventory identifies the
+The native matrix uses macOS 15 and 26 Intel hosts and the `xcode-27`
+Apple Silicon preview pool. macOS 26 moved to Intel after repeated hosted ARM
+runner allocation failures before test execution; its native acceptance remains
+mandatory, with Apple Silicon acceptance on 27. GitHub's published image inventory identifies the
 latter as macOS 27.0.1 (26A434), but observed runs already report macOS 27.2.
 The fixture prints the actual running OS rather than inferring it from the
 runner label. Full XCTest and the shared behavior reports retain the macOS 15

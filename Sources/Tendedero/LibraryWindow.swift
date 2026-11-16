@@ -1,7 +1,17 @@
 import AppKit
+import Combine
 import SwiftUI
 
 final class LibraryNativeWindow: NSWindow {
+    private(set) var responderRevision = 0
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        let previous = firstResponder
+        let accepted = super.makeFirstResponder(responder)
+        // Track real focus entry separately from an editor's teardown, which
+        // can clear the window responder even when another pane owns focus.
+        if accepted, let responder, responder !== self, responder !== previous { responderRevision += 1 }
+        return accepted
+    }
     var onKey: ((NSEvent, Bool) -> Bool)?
     var onBeforeMouseKeyFocus: (() -> Void)?
     var onCancelKeyboardFocus: (() -> Void)?
@@ -48,6 +58,7 @@ final class LibraryNativeWindow: NSWindow {
     var keyboardFocusedID: UUID? { previewWindow?.isKeyWindow == true ? previews.currentID : model.focusedID }
     private var closingFullscreen = false
     private var focusGeneration = 0
+    private var inspectorFocusSubscription: AnyCancellable?
     private(set) var splitController: LibrarySplitController!
     private(set) var toolbarController: LibraryToolbarController!
     var onSettings: (() -> Void)?
@@ -94,6 +105,10 @@ final class LibraryNativeWindow: NSWindow {
             guard let window = self?.window else { return }
             if window.styleMask.contains(.fullScreen) { window.toggleFullScreen(nil) } else { window.performClose(nil) }
         }
+        inspectorFocusSubscription = model.$inspected.dropFirst().sink { [weak self] record in
+            guard let self, record == nil, self.model.inspected != nil else { return }
+            self.preserveExternalFocusThroughInspectorTeardown()
+        }
     }
     required init?(coder: NSCoder) { fatalError() }
     func present() {
@@ -124,6 +139,28 @@ final class LibraryNativeWindow: NSWindow {
         return .content
     }
     private func cancelDeferredFocus() { focusGeneration += 1; model.cancelContentFocus() }
+    private func preserveExternalFocusThroughInspectorTeardown() {
+        guard let window = window as? LibraryNativeWindow else { return }
+        let pane = keyboardPane
+        guard pane == .search || pane == .sidebar else { return }
+        let generation = focusGeneration, revision = window.responderRevision
+        let selection = (toolbarController.searchField.currentEditor() as? NSTextView)?.selectedRange()
+        // Removing SwiftUI inspector text editors can clear the shared window
+        // responder after a query resets selection. Preserve a different pane
+        // only if no newer command, mouse action or native focus entry occurred.
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self, let window, window.isKeyWindow, NSApp.isActive,
+                  generation == self.focusGeneration, revision == window.responderRevision else { return }
+            window.contentView?.layoutSubtreeIfNeeded()
+            guard generation == self.focusGeneration, revision == window.responderRevision,
+                  window.firstResponder == nil || window.firstResponder === window else { return }
+            self.focusKeyboardPane(pane)
+            if pane == .search, let selection, let editor = self.toolbarController.searchField.currentEditor() as? NSTextView {
+                let count = editor.string.utf16.count, location = min(selection.location, editor.string.utf16.count)
+                editor.setSelectedRange(NSRange(location: location, length: min(selection.length, count - location)))
+            }
+        }
+    }
     func cycleKeyboardPane(reverse: Bool) {
         guard model.flushEdits() else { return }
         cancelDeferredFocus()

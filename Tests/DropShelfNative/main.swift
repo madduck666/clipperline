@@ -291,7 +291,14 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
             post(.leftMouseDragged, at: CGPoint(x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio))
             await pause(0.03)
         }
-        await pause(0.3); post(.leftMouseUp, at: end); await pause(1)
+        // Keep sending real tracking events while the source finishes preparing
+        // cold folder/bundle metadata. A single final move followed by mouse-up
+        // can overtake AppKit's drag-start work on a newly booted CI desktop.
+        for _ in 0..<25 {
+            post(.leftMouseDragged, at: end)
+            await pause(0.1)
+        }
+        post(.leftMouseUp, at: end); await pause(1)
     }
     func runFinder() async {
         // This is a separate application's real file source, not injected drop
@@ -303,6 +310,11 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         NSWorkspace.shared.activateFileViewerSelecting([source.file])
         await pause(1.5)
         guard let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) else { finish("Finder is unavailable on the CI desktop", success: false); return }
+        let application = AXUIElementCreateApplication(finder.processIdentifier)
+        // Reveal alone need not activate Finder under modern focus rules.
+        // Use the already-authorized accessibility action before sending keys.
+        _ = AXUIElementSetAttributeValue(application, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        await pause(0.2)
         // Use real Finder's icon view so the mouse starts on a file icon, not
         // an editable filename field or a gallery/preview label. This changes
         // only the generated fixture's window, never privacy settings.
@@ -312,7 +324,6 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: 18, keyDown: false)!
         keyUp.flags = []; keyUp.post(tap: .cghidEventTap)
         await pause(0.5)
-        let application = AXUIElementCreateApplication(finder.processIdentifier)
         var start: CGPoint?
         for _ in 0..<20 {
             var budget = 2000
@@ -329,7 +340,15 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         post(.mouseMoved, at: start); await pause(0.1)
         post(.leftMouseDown, at: start); await pause(0.1)
         for step in 1...5 { post(.leftMouseDragged, at: CGPoint(x: start.x + Double(step) * 4, y: start.y)); await pause(0.05) }
+        // Protected folders can take longer to prepare their native payload.
+        // A previously revealed empty panel is not evidence that Finder has
+        // started this drag; wait for the source's new pasteboard generation.
+        for _ in 0..<60 {
+            if board.changeCount != beforeChange { break }
+            await pause(0.05)
+        }
         finderGestureMetadata = "Finder active=\(finder.isActive), role=\(finderCandidateRole), new pasteboard=\(board.changeCount != beforeChange), types=\((board.types ?? []).prefix(16).map(\.rawValue).joined(separator: ","))"
+        guard board.changeCount != beforeChange else { finish("Finder did not start a new native file drag; \(finderGestureMetadata)", success: false); return }
         var frame: NSRect?
         for _ in 0..<20 {
             frame = visibleShelfFrame()
@@ -367,9 +386,18 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         await pause(0.4)
         let start = globalPoint(NSPoint(x: frame.midX, y: frame.minY + 130))
         let end = globalPoint(window.convertPoint(toScreen: NSPoint(x: 100, y: 90)))
+        let board = NSPasteboard(name: .drag), beforeChange = NSPasteboard(name: .drag).changeCount
         post(.mouseMoved, at: start); await pause(0.1)
         post(.leftMouseDown, at: start); await pause(0.1)
-        await moveDrag(from: start, to: end)
+        let begun = CGPoint(x: start.x + 12, y: start.y)
+        post(.leftMouseDragged, at: begun)
+        for _ in 0..<60 {
+            if board.changeCount != beforeChange { break }
+            await pause(0.05)
+        }
+        guard board.changeCount != beforeChange else { finish("Shelf did not start a new native drag-out pasteboard", success: false); return }
+        await pause(0.3)
+        await moveDrag(from: begun, to: end)
         guard source.received.map(\.path) == [source.file.path] else {
             finish("Packaged application did not return the stored Finder file through a native drag; receiver entries=\(source.destinationEntries), prepare=\(source.destinationPreparations), drops=\(source.destinationDrops), received=\(source.received.count)", success: false); return
         }
@@ -385,10 +413,18 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         print("::notice title=Native Finder \(kind)::\(summary)"); fflush(stdout)
         if packagedMode, let frame = visibleShelfFrame() {
             let close = globalPoint(NSPoint(x: frame.minX + 23, y: frame.maxY - 23))
-            post(.mouseMoved, at: close); post(.leftMouseDown, at: close)
+            // Allow WindowServer to settle the pointer after the external
+            // drop before beginning a separate click on the close control.
+            post(.mouseMoved, at: close); await pause(0.2)
+            post(.leftMouseDown, at: close)
             await pause(0.1); post(.leftMouseUp, at: close)
         } else { shelf.dismiss() }
-        await pause(0.4)
+        // Observe the result instead of assuming a busy CI desktop processes
+        // a cross-process mouse-up within a fixed 400 ms.
+        for _ in 0..<30 {
+            if visibleShelfFrame() == nil { break }
+            await pause(0.1)
+        }
         guard visibleShelfFrame() == nil else { finish("Closing the shelf did not dismiss it", success: false); return }
         finderTrial += 1
         guard finderTrial < finderFixtures.count else { finish("All real Finder file, folder and application-bundle drops passed", success: true); return }
