@@ -413,10 +413,18 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         print("::notice title=Native Finder \(kind)::\(summary)"); fflush(stdout)
         if packagedMode, let frame = visibleShelfFrame() {
             let close = globalPoint(NSPoint(x: frame.minX + 23, y: frame.maxY - 23))
-            post(.mouseMoved, at: close); post(.leftMouseDown, at: close)
+            // Allow WindowServer to settle the pointer after the external
+            // drop before beginning a separate click on the close control.
+            post(.mouseMoved, at: close); await pause(0.2)
+            post(.leftMouseDown, at: close)
             await pause(0.1); post(.leftMouseUp, at: close)
         } else { shelf.dismiss() }
-        await pause(0.4)
+        // Observe the result instead of assuming a busy CI desktop processes
+        // a cross-process mouse-up within a fixed 400 ms.
+        for _ in 0..<30 {
+            if visibleShelfFrame() == nil { break }
+            await pause(0.1)
+        }
         guard visibleShelfFrame() == nil else { finish("Closing the shelf did not dismiss it", success: false); return }
         finderTrial += 1
         guard finderTrial < finderFixtures.count else { finish("All real Finder file, folder and application-bundle drops passed", success: true); return }
