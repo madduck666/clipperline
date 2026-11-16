@@ -135,10 +135,11 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
             } else if origin != "temporary" {
                 throw CocoaError(.fileReadInvalidFileName)
             }
-            let file = fixtureRoot.appendingPathComponent("Synthetic.txt")
+            let identifier = UUID().uuidString
+            let file = fixtureRoot.appendingPathComponent("Synthetic-\(identifier).txt")
             try Data("original synthetic file".utf8).write(to: file)
-            let folder = fixtureRoot.appendingPathComponent("Synthetic Folder", isDirectory: true)
-            let bundle = fixtureRoot.appendingPathComponent("Synthetic Application.app", isDirectory: true)
+            let folder = fixtureRoot.appendingPathComponent("Synthetic Folder-\(identifier)", isDirectory: true)
+            let bundle = fixtureRoot.appendingPathComponent("Synthetic Application-\(identifier).app", isDirectory: true)
             for directory in [folder, bundle] {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 try Data("original folder contents".utf8).write(to: directory.appendingPathComponent("Marker.txt"))
@@ -298,7 +299,12 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         var start: CGPoint?
         for _ in 0..<20 {
             var budget = 2000
-            start = finderItemPoint(in: application, name: source.file.lastPathComponent, budget: &budget)
+            // Earlier trials leave Finder windows/tabs open. Match only the
+            // newly revealed window, and use unique item names across origins.
+            if let focused = attribute(application, kAXFocusedWindowAttribute),
+               CFGetTypeID(focused) == AXUIElementGetTypeID() {
+                start = finderItemPoint(in: focused as! AXUIElement, name: source.file.lastPathComponent, budget: &budget)
+            }
             if start != nil { break }; await pause(0.2)
         }
         guard let start else { finish("Could not locate the generated file in Finder's accessibility tree", success: false); return }
