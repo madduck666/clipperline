@@ -18,8 +18,10 @@ rm -rf "$OUT/Sources"
 mkdir -p "$OUT/Sources"
 xcrun swift package resolve
 test -d "$FRAMEWORK" || { echo "The pinned Sparkle 2.10.0 framework is missing" >&2; exit 1; }
-SDK="${SDKROOT:-$(xcrun --show-sdk-path)}"
-SWIFTC="$(xcrun --find swiftc)"
+# Hosted desktops may export a CommandLineTools SDKROOT while selecting a
+# newer Xcode compiler. SwiftUI macros must come from that compiler's SDK.
+SDK="$(env -u SDKROOT xcrun --sdk macosx --show-sdk-path)"
+SWIFTC="$(env -u SDKROOT xcrun --sdk macosx --find swiftc)"
 SWIFT_BIN="$(dirname "$SWIFTC")"
 SWIFT_HOST_PLUGINS="$SWIFT_BIN/../lib/swift/host/plugins"
 SWIFT_PLUGIN_SERVER="$SWIFT_BIN/swift-plugin-server"
