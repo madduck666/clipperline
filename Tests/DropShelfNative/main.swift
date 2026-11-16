@@ -244,8 +244,9 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         }
         return nil
     }
-    func finderItemPoint(in element: AXUIElement, name: String, budget: inout Int) -> CGPoint? {
+    func finderItemPoint(in element: AXUIElement, name: String, budget: inout Int, selectedAncestor: Bool = false) -> CGPoint? {
         guard budget > 0 else { return nil }; budget -= 1
+        let selected = selectedAncestor || attribute(element, kAXSelectedAttribute) as? Bool == true
         // Finder commonly hides an application's .app extension in its label.
         // Fixture names are unique even when their extension is hidden.
         let labels: Set<String> = [name, (name as NSString).deletingPathExtension]
@@ -253,7 +254,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
             guard let label = attribute(element, key) as? String else { return false }
             return labels.contains(label)
         }
-        if named, let position = attribute(element, kAXPositionAttribute), let size = attribute(element, kAXSizeAttribute),
+        if named, selected, let position = attribute(element, kAXPositionAttribute), let size = attribute(element, kAXSizeAttribute),
            CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID() {
             var point = CGPoint.zero, dimensions = CGSize.zero
             if AXValueGetValue(position as! AXValue, .cgPoint, &point), AXValueGetValue(size as! AXValue, .cgSize, &dimensions), dimensions.width > 0, dimensions.height > 0 {
@@ -261,7 +262,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
             }
         }
         for child in attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? [] {
-            if let point = finderItemPoint(in: child, name: name, budget: &budget) { return point }
+            if let point = finderItemPoint(in: child, name: name, budget: &budget, selectedAncestor: selected) { return point }
         }
         return nil
     }

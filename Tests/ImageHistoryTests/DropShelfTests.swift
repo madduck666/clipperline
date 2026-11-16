@@ -37,6 +37,11 @@ import XCTest
 }
 
 @MainActor final class DropShelfTests: HistoryTestCase {
+    func testNonactivatingShelfAcceptsTheFirstMouseDown() {
+        _ = NSApplication.shared
+        let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        XCTAssertTrue(view.acceptsFirstMouse(for: nil))
+    }
     func testFileDropCompletesAppKitDestinationHandshake() throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

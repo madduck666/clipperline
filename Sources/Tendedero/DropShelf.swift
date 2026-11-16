@@ -84,6 +84,14 @@ import QuickLookThumbnailing
         return view
     }()
     private lazy var panel = DropShelfPanel(content: view)
+    #if DROP_SHELF_NATIVE_DIAGNOSTICS
+    var nativeSourceDiagnostics: [String: Int] {
+        guard !model.files.isEmpty else { return [:] }
+        return ["sourceMouseDowns": view.nativeMouseDowns, "sourceDownY": view.nativeDownY,
+                "sourceAttempts": view.nativeSourceAttempts, "sourceStarts": view.nativeSourceStarts,
+                "sourceFailures": view.nativeSourceFailures]
+    }
+    #endif
     func start() {
         guard timer == nil else { return }
         lastChange = NSPasteboard(name: .drag).changeCount
@@ -177,6 +185,8 @@ import QuickLookThumbnailing
     private(set) var nativePreparations = 0
     private(set) var nativeDropAttempts = 0
     private(set) var nativeSourceMask: NSDragOperation = []
+    private(set) var nativeMouseDowns = 0, nativeDownY = 0
+    private(set) var nativeSourceAttempts = 0, nativeSourceStarts = 0, nativeSourceFailures = 0
     #endif
     private var hovering = false
     private var down: NSPoint?
@@ -194,6 +204,7 @@ import QuickLookThumbnailing
         closeButton.setAccessibilityLabel(L("Close")); addSubview(closeButton)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     @objc private func closeShelf() { onClose?() }
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -260,6 +271,9 @@ import QuickLookThumbnailing
     override func concludeDragOperation(_ sender: NSDraggingInfo?) { hovering = false; needsDisplay = true }
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        #if DROP_SHELF_NATIVE_DIAGNOSTICS
+        nativeMouseDowns += 1; nativeDownY = Int(point.y)
+        #endif
         if point.y > bounds.height - 38 { window?.performDrag(with: event) }
         else { down = point }
     }
@@ -269,6 +283,9 @@ import QuickLookThumbnailing
         let point = convert(event.locationInWindow, from: nil)
         guard hypot(point.x - start.x, point.y - start.y) >= 5 else { return }
         down = nil
+        #if DROP_SHELF_NATIVE_DIAGNOSTICS
+        nativeSourceAttempts += 1
+        #endif
         do {
             let urls = try dragFiles?() ?? []
             guard !urls.isEmpty else { return }
@@ -278,8 +295,16 @@ import QuickLookThumbnailing
                 item.setDraggingFrame(NSRect(x: point.x + Double(index % 3) * 4, y: point.y - 32, width: 48, height: 48), contents: image ?? NSImage(systemSymbolName: url.hasDirectoryPath ? "folder" : "doc", accessibilityDescription: nil))
                 return item
             }
+            #if DROP_SHELF_NATIVE_DIAGNOSTICS
+            nativeSourceStarts += 1
+            #endif
             beginDraggingSession(with: items, event: event, source: self)
-        } catch { message = L("A dropped file is no longer available."); needsDisplay = true }
+        } catch {
+            #if DROP_SHELF_NATIVE_DIAGNOSTICS
+            nativeSourceFailures += 1
+            #endif
+            message = L("A dropped file is no longer available."); needsDisplay = true
+        }
     }
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
 }

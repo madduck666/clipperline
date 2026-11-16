@@ -80,7 +80,7 @@ if [ "$#" = 0 ]; then
   # input-posting test process, before the full application is built.
   HOST_APP="$OUT/NativeShelfHost.app"
   mkdir -p "$HOST_APP/Contents/MacOS"
-  swiftc -O -swift-version 5 Sources/Tendedero/DropShelf.swift Tests/DropShelfNativeHost/main.swift -o "$HOST_APP/Contents/MacOS/ShelfHost"
+  swiftc -O -swift-version 5 -D DROP_SHELF_NATIVE_DIAGNOSTICS Sources/Tendedero/DropShelf.swift Tests/DropShelfNativeHost/main.swift -o "$HOST_APP/Contents/MacOS/ShelfHost"
   python3 - "$HOST_APP/Contents/Info.plist" <<'PYHOST'
 import pathlib, plistlib, sys
 pathlib.Path(sys.argv[1]).write_bytes(plistlib.dumps({

@@ -6,17 +6,19 @@ func L(_ key: String) -> String { key }
     var polls = 0, mouseDownPolls = 0, fileDragPolls = 0
     func applicationDidFinishLaunching(_ notification: Notification) {
         shelf.start()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, CommandLine.arguments.count > 1 else { return }
                 self.polls += 1
                 if NSEvent.pressedMouseButtons & 1 != 0 { self.mouseDownPolls += 1 }
                 let board = NSPasteboard(name: .drag)
                 if board.types?.contains(.fileURL) == true { self.fileDragPolls += 1 }
-                let values: [String: Int] = ["polls": self.polls, "mouseDownPolls": self.mouseDownPolls, "fileDragPolls": self.fileDragPolls, "stored": self.shelf.model.files.count]
+                var values: [String: Int] = ["polls": self.polls, "mouseDownPolls": self.mouseDownPolls, "fileDragPolls": self.fileDragPolls, "stored": self.shelf.model.files.count]
+                values.merge(self.shelf.nativeSourceDiagnostics) { _, new in new }
                 if let data = try? JSONSerialization.data(withJSONObject: values) { try? data.write(to: URL(fileURLWithPath: CommandLine.arguments[1]), options: .atomic) }
             }
         }
+        RunLoop.main.add(timer, forMode: .common); self.timer = timer
     }
     func applicationWillTerminate(_ notification: Notification) { timer?.invalidate(); shelf.stop() }
 }
