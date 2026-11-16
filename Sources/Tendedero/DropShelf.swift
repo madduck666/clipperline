@@ -1,6 +1,16 @@
 import AppKit
 import QuickLookThumbnailing
 
+/// What the box shows for its current contents. Derived from stored URLs and
+/// the last message only: no file I/O, so it is safe inside drag callbacks.
+struct DropShelfDisplay: Equatable {
+    var symbol: String
+    var title: String
+    var subtitle: String
+    var detail: String
+    var isWarning: Bool
+}
+
 /// Session-only references. Dismissing the shelf never touches source files.
 @MainActor final class DropShelf {
     private(set) var files: [URL] = []
@@ -8,7 +18,9 @@ import QuickLookThumbnailing
         guard !urls.isEmpty, urls.count <= 100 else { throw CocoaError(.fileReadInvalidFileName) }
         let candidates = try urls.map { url -> URL in
             guard url.isFileURL, url.host == nil || url.host == "" || url.host == "localhost" else { throw CocoaError(.fileReadUnsupportedScheme) }
-            let canonical = url.standardizedFileURL
+            // Finder may hand over file reference URLs (file:///.file/id=…),
+            // whose last path component is an inode id, not the file's name.
+            let canonical = ((url as NSURL).filePathURL ?? url).standardizedFileURL
             let values = try canonical.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey])
             guard values.isRegularFile == true || values.isDirectory == true else { throw CocoaError(.fileReadUnsupportedScheme) }
             return canonical
@@ -42,6 +54,29 @@ import QuickLookThumbnailing
     nonisolated static func filesAfterDrag(_ stored: [URL], dragged: [URL], operation: NSDragOperation, exists: (URL) -> Bool) -> [URL] {
         let kept = operation.contains(.move) ? stored.filter { !dragged.contains($0) } : stored
         return kept.filter { exists($0) }
+    }
+
+    /// Empty: a drop hint. One item: its name. Several: "N items". A message
+    /// (rejected or unreadable drop) is shown in addition, never instead.
+    static func display(files: [URL], message: String) -> DropShelfDisplay {
+        guard let first = files.first else {
+            return DropShelfDisplay(symbol: "tray.and.arrow.down", title: L("Drop files here"), subtitle: L("Drop shelf"),
+                                    detail: message, isWarning: !message.isEmpty)
+        }
+        let folders = files.allSatisfy { $0.hasDirectoryPath }
+        let symbol = files.count == 1 ? (first.hasDirectoryPath ? "folder" : "doc") : (folders ? "folder" : "doc.on.doc")
+        let name = first.lastPathComponent.isEmpty ? first.path : first.lastPathComponent
+        let title = files.count == 1 ? name : String(format: L("%d items"), files.count)
+        return DropShelfDisplay(symbol: symbol, title: title, subtitle: L("Drag to another window"),
+                                detail: message, isWarning: !message.isEmpty)
+    }
+
+    /// Largest rect with the image's aspect ratio, centred in `box`.
+    nonisolated static func aspectFit(_ size: NSSize, in box: NSRect) -> NSRect {
+        guard size.width > 0, size.height > 0, box.width > 0, box.height > 0 else { return box }
+        let scale = min(box.width / size.width, box.height / size.height)
+        let width = size.width * scale, height = size.height * scale
+        return NSRect(x: box.midX - width / 2, y: box.midY - height / 2, width: width, height: height)
     }
 
     /// The box opens beside the pointer, near enough to reach while the drag
@@ -186,12 +221,12 @@ import QuickLookThumbnailing
     }
     private func showFiles() {
         generation += 1
-        view.files = model.files; view.message = ""; view.needsDisplay = true
-        guard let first = model.files.first else { view.preview = nil; return }
         // File-specific icons can synchronously wait on IconServices or
-        // protected-folder access. Finish the drop with a local symbol;
-        // request file previews only after AppKit receives acceptance.
-        view.preview = NSImage(systemSymbolName: first.hasDirectoryPath ? "folder" : "doc", accessibilityDescription: nil)
+        // protected-folder access. Finish the drop with the view's own symbol,
+        // name and count (no I/O); the real preview replaces the symbol later.
+        // A stale or failed preview leaves the symbol in place.
+        view.files = model.files; view.message = ""; view.preview = nil; view.needsDisplay = true
+        guard let first = model.files.first else { return }
         let current = generation
         DispatchQueue.main.async { [weak self] in
             guard let self, self.generation == current else { return }
@@ -200,7 +235,8 @@ import QuickLookThumbnailing
             self.thumbnailRequest = request
             QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] representation, _ in
                 DispatchQueue.main.async {
-                    guard let self, self.generation == current, let representation else { return }
+                    guard let self, self.generation == current, let representation,
+                          representation.nsImage.size.width > 0, representation.nsImage.size.height > 0 else { return }
                     self.view.preview = representation.nsImage; self.view.needsDisplay = true
                 }
             }
@@ -212,7 +248,10 @@ import QuickLookThumbnailing
     }
 }
 
-@MainActor final class DropShelfView: NSVisualEffectView, NSDraggingSource {
+/// A plain layer-backed view, not an NSVisualEffectView: custom drawing in a
+/// visual-effect view's draw(_:) lands beneath its material layers, which left
+/// the box showing only the dark material and the close button.
+@MainActor final class DropShelfView: NSView, NSDraggingSource {
     var onDrop: (([URL]) -> Bool)?
     var onClose: (() -> Void)?
     var dragFiles: (() throws -> [URL])?
@@ -233,10 +272,18 @@ import QuickLookThumbnailing
     private var hovering = false
     private var down: NSPoint?
     private let closeButton = NSButton()
+    /// Fixed dark surface with explicit light content, independent of the
+    /// system appearance, so text and symbols always contrast.
+    private static let surfaceColor = NSColor(srgbRed: 0.13, green: 0.13, blue: 0.14, alpha: 1)
+    private static let primaryTextColor = NSColor.white
+    private static let secondaryTextColor = NSColor(white: 1, alpha: 0.72)
+    var shelfDisplay: DropShelfDisplay { DropShelf.display(files: files, message: message) }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        material = .hudWindow; blendingMode = .behindWindow; state = .active
-        wantsLayer = true; layer?.cornerRadius = 25; layer?.masksToBounds = true
+        appearance = NSAppearance(named: .darkAqua)
+        wantsLayer = true; layerContentsRedrawPolicy = .onSetNeedsDisplay
+        layer?.backgroundColor = DropShelfView.surfaceColor.cgColor
+        layer?.cornerRadius = 25; layer?.masksToBounds = true
         layer?.borderWidth = 1; layer?.borderColor = NSColor.white.withAlphaComponent(0.25).cgColor
         registerForDraggedTypes([.fileURL])
         setAccessibilityLabel(L("Drop shelf"))
@@ -250,26 +297,46 @@ import QuickLookThumbnailing
     @objc private func closeShelf() { onClose?() }
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        // Behind-window material does not guarantee an input region. A faint
-        // fill can still pass through on blank-area approaches; entering over
-        // an icon first merely hides that bug by painting the hover highlight.
+        // A faint or material-only fill can let blank-area drags pass through.
         // Keep every interior pixel opaque so WindowServer targets this panel
         // before any destination callback or protected-file read is required.
-        NSColor.windowBackgroundColor.setFill()
+        DropShelfView.surfaceColor.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 25, yRadius: 25).fill()
         NSColor.white.withAlphaComponent(0.3).setFill()
         NSBezierPath(roundedRect: NSRect(x: bounds.midX - 18, y: bounds.height - 13, width: 36, height: 4), xRadius: 2, yRadius: 2).fill()
-        if hovering { NSColor.controlAccentColor.withAlphaComponent(0.2).setFill(); bounds.fill() }
-        let image = preview ?? NSImage(systemSymbolName: "tray.and.arrow.down", accessibilityDescription: nil)
-        image?.draw(in: NSRect(x: bounds.midX - 50, y: 80, width: 100, height: 100), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-        func label(_ text: String, y: Double, size: Double, color: NSColor) {
-            let style = NSMutableParagraphStyle(); style.alignment = .center; style.lineBreakMode = .byTruncatingMiddle
-            (text as NSString).draw(in: NSRect(x: 12, y: y, width: bounds.width - 24, height: 22), withAttributes: [.font: NSFont.systemFont(ofSize: size), .foregroundColor: color, .paragraphStyle: style])
+        if hovering { NSColor.controlAccentColor.withAlphaComponent(0.3).setFill(); bounds.fill() }
+        let state = shelfDisplay
+        // Symbols are template images: drawn directly they come out black on
+        // the dark surface. Tint them; real previews are drawn as they are.
+        let box = NSRect(x: bounds.midX - 50, y: 80, width: 100, height: 100)
+        if let preview, preview.size.width > 0, preview.size.height > 0 {
+            preview.draw(in: DropShelf.aspectFit(preview.size, in: box), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        } else {
+            drawSymbol(state.symbol, in: box, color: DropShelfView.primaryTextColor)
         }
-        label(files.count == 1 ? files[0].lastPathComponent : L("Drop shelf"), y: 53, size: 13, color: .labelColor)
-        label(files.isEmpty ? L("Drop files here") : L("Drag to another window"), y: 31, size: 11, color: .secondaryLabelColor)
-        if !message.isEmpty { label(message, y: 10, size: 10, color: .systemOrange) }
-        else if files.count > 1 { label("\(files.count)", y: 10, size: 11, color: .secondaryLabelColor) }
+        func label(_ text: String, y: Double, size: Double, weight: NSFont.Weight, color: NSColor) {
+            guard !text.isEmpty else { return }
+            let style = NSMutableParagraphStyle(); style.alignment = .center; style.lineBreakMode = .byTruncatingMiddle
+            (text as NSString).draw(in: NSRect(x: 12, y: y, width: bounds.width - 24, height: 22), withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color, .paragraphStyle: style])
+        }
+        label(state.title, y: 53, size: 13, weight: .semibold, color: DropShelfView.primaryTextColor)
+        label(state.subtitle, y: 31, size: 11, weight: .regular, color: DropShelfView.secondaryTextColor)
+        label(state.detail, y: 10, size: 10, weight: .medium, color: state.isWarning ? .systemOrange : DropShelfView.secondaryTextColor)
+    }
+    /// Draws a template symbol in `color`: the glyph is painted into its own
+    /// transparency layer, then recoloured only where the glyph has pixels.
+    private func drawSymbol(_ name: String, in box: NSRect, color: NSColor) {
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 64, weight: .regular)),
+              let context = NSGraphicsContext.current else { return }
+        let rect = DropShelf.aspectFit(symbol.size, in: box.insetBy(dx: 10, dy: 10))
+        context.saveGraphicsState()
+        context.cgContext.beginTransparencyLayer(in: rect, auxiliaryInfo: nil)
+        symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        color.set()
+        rect.fill(using: .sourceAtop)
+        context.cgContext.endTransparencyLayer()
+        context.restoreGraphicsState()
     }
     private func canAccept(_ sender: NSDraggingInfo) -> Bool {
         // Negotiate using metadata only. Finder can defer file data and access
@@ -307,8 +374,14 @@ import QuickLookThumbnailing
         nativeDropAttempts += 1
         #endif
         hovering = false; needsDisplay = true
-        guard let urls = dropURLs(from: sender) else { return false }
-        return onDrop?(urls) ?? false
+        // A drop that delivers no usable file never leaves the box silent.
+        guard let urls = dropURLs(from: sender), onDrop?(urls) == true else {
+            if message.isEmpty, (sender.draggingSource as? DropShelfView) !== self {
+                message = L("A dropped file is no longer available.")
+            }
+            return false
+        }
+        return true
     }
     override func concludeDragOperation(_ sender: NSDraggingInfo?) { hovering = false; needsDisplay = true }
     override func mouseDown(with event: NSEvent) {

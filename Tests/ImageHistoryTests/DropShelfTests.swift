@@ -280,6 +280,106 @@ import XCTest
         XCTAssertTrue(controller.model.files.isEmpty, "Moved items leave the box")
         XCTAssertEqual(try String(contentsOf: kept), "synthetic")
     }
+    func testDisplayShowsHintNameOrCountWithoutFileAccess() {
+        // Synthetic paths that do not exist: the display must not touch disk.
+        let empty = DropShelf.display(files: [], message: "")
+        XCTAssertEqual(empty.title, L("Drop files here"))
+        XCTAssertFalse(empty.title.isEmpty)
+        XCTAssertEqual(empty.symbol, "tray.and.arrow.down")
+        XCTAssertFalse(empty.isWarning)
+        let file = URL(fileURLWithPath: "/synthetic/Quarterly report.pdf")
+        let folder = URL(fileURLWithPath: "/synthetic/Photos", isDirectory: true)
+        let one = DropShelf.display(files: [file], message: "")
+        XCTAssertEqual(one.title, "Quarterly report.pdf")
+        XCTAssertEqual(one.symbol, "doc")
+        XCTAssertEqual(one.subtitle, L("Drag to another window"))
+        XCTAssertEqual(one.detail, "")
+        XCTAssertEqual(DropShelf.display(files: [folder], message: "").title, "Photos")
+        XCTAssertEqual(DropShelf.display(files: [folder], message: "").symbol, "folder")
+        let several = DropShelf.display(files: [file, folder, URL(fileURLWithPath: "/synthetic/c.png")], message: "")
+        XCTAssertEqual(several.title, String(format: L("%d items"), 3))
+        XCTAssertTrue(several.title.contains("3"))
+        XCTAssertEqual(several.symbol, "doc.on.doc")
+        let warned = DropShelf.display(files: [], message: L("A dropped file is no longer available."))
+        XCTAssertTrue(warned.isWarning)
+        XCTAssertEqual(warned.detail, L("A dropped file is no longer available."))
+        XCTAssertEqual(warned.title, L("Drop files here"), "A message never replaces the hint")
+    }
+    func testPreviewKeepsItsProportionsInsideTheIconBox() {
+        let box = NSRect(x: 58, y: 80, width: 100, height: 100)
+        let wide = DropShelf.aspectFit(NSSize(width: 200, height: 100), in: box)
+        XCTAssertEqual(wide.width, 100, accuracy: 0.001); XCTAssertEqual(wide.height, 50, accuracy: 0.001)
+        XCTAssertEqual(wide.midX, box.midX, accuracy: 0.001); XCTAssertEqual(wide.midY, box.midY, accuracy: 0.001)
+        let tall = DropShelf.aspectFit(NSSize(width: 10, height: 40), in: box)
+        XCTAssertEqual(tall.height, 100, accuracy: 0.001); XCTAssertEqual(tall.width, 25, accuracy: 0.001)
+        XCTAssertEqual(DropShelf.aspectFit(.zero, in: box), box)
+    }
+    private func brightPixels(_ view: DropShelfView) throws -> Int {
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 216, pixelsHigh: 228, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSColor.clear.setFill(); view.bounds.fill(using: .copy)
+        view.draw(view.bounds)
+        NSGraphicsContext.restoreGraphicsState()
+        var count = 0
+        for x in 0..<216 {
+            for y in 0..<228 {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                if color.alphaComponent > 0.9, color.redComponent > 0.75, color.greenComponent > 0.75, color.blueComponent > 0.75 { count += 1 }
+            }
+        }
+        return count
+    }
+    func testShelfDrawsContrastingContentInEveryState() throws {
+        _ = NSApplication.shared
+        let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        // The surface is dark; the hint, symbol, name and count are light.
+        XCTAssertGreaterThan(try brightPixels(view), 100, "The empty box must show a visible hint")
+        view.files = [URL(fileURLWithPath: "/synthetic/Quarterly report.pdf")]
+        XCTAssertEqual(view.shelfDisplay.title, "Quarterly report.pdf")
+        XCTAssertGreaterThan(try brightPixels(view), 100, "A held file must be visible before any preview arrives")
+        view.files.append(URL(fileURLWithPath: "/synthetic/Photos", isDirectory: true))
+        XCTAssertEqual(view.shelfDisplay.title, String(format: L("%d items"), 2))
+        XCTAssertGreaterThan(try brightPixels(view), 100)
+        // An empty or failed preview image never blanks the box.
+        view.preview = NSImage(size: .zero)
+        XCTAssertGreaterThan(try brightPixels(view), 100)
+    }
+    func testUnreadableDropShowsAMessageInsteadOfABlankBox() {
+        _ = NSApplication.shared
+        let board = NSPasteboard(name: .init("drop-shelf-unreadable-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        board.declareTypes([.fileURL], owner: nil)
+        let info = ShelfDropInfo(board: board)
+        let view = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        var drops = 0
+        view.onDrop = { _ in drops += 1; return true }
+        XCTAssertEqual(view.shelfDisplay.detail, "")
+        XCTAssertTrue(view.prepareForDragOperation(info))
+        XCTAssertFalse(view.performDragOperation(info))
+        XCTAssertEqual(drops, 0)
+        XCTAssertEqual(view.shelfDisplay.detail, L("A dropped file is no longer available."))
+        XCTAssertTrue(view.shelfDisplay.isWarning)
+        // A drop the controller refuses also leaves a visible message.
+        let refusing = DropShelfView(frame: NSRect(x: 0, y: 0, width: 216, height: 228))
+        refusing.onDrop = { _ in false }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+        board.clearContents()
+        XCTAssertTrue(board.writeObjects([file as NSURL]))
+        XCTAssertFalse(refusing.performDragOperation(info))
+        XCTAssertTrue(refusing.shelfDisplay.isWarning)
+    }
+    func testFileReferenceURLIsStoredByPathAndName() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + " named.txt")
+        try Data("synthetic".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let reference = try XCTUnwrap((file as NSURL).fileReferenceURL())
+        let shelf = DropShelf()
+        try shelf.add([reference])
+        XCTAssertEqual(shelf.files.map(\.lastPathComponent), [file.lastPathComponent])
+        XCTAssertEqual(DropShelf.display(files: shelf.files, message: "").title, file.lastPathComponent)
+        XCTAssertEqual(try String(contentsOf: file), "synthetic")
+    }
     func testControllerAcceptsFilesAndClosePreservesOriginals() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
         try Data("synthetic".utf8).write(to: file)
