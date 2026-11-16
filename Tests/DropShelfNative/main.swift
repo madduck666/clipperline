@@ -291,7 +291,14 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
             post(.leftMouseDragged, at: CGPoint(x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio))
             await pause(0.03)
         }
-        await pause(0.8); post(.leftMouseUp, at: end); await pause(1)
+        // Keep sending real tracking events while the source finishes preparing
+        // cold folder/bundle metadata. A single final move followed by mouse-up
+        // can overtake AppKit's drag-start work on a newly booted CI desktop.
+        for _ in 0..<25 {
+            post(.leftMouseDragged, at: end)
+            await pause(0.1)
+        }
+        post(.leftMouseUp, at: end); await pause(1)
     }
     func runFinder() async {
         // This is a separate application's real file source, not injected drop
@@ -303,6 +310,11 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         NSWorkspace.shared.activateFileViewerSelecting([source.file])
         await pause(1.5)
         guard let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) else { finish("Finder is unavailable on the CI desktop", success: false); return }
+        let application = AXUIElementCreateApplication(finder.processIdentifier)
+        // Reveal alone need not activate Finder under modern focus rules.
+        // Use the already-authorized accessibility action before sending keys.
+        _ = AXUIElementSetAttributeValue(application, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        await pause(0.2)
         // Use real Finder's icon view so the mouse starts on a file icon, not
         // an editable filename field or a gallery/preview label. This changes
         // only the generated fixture's window, never privacy settings.
@@ -312,7 +324,6 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: 18, keyDown: false)!
         keyUp.flags = []; keyUp.post(tap: .cghidEventTap)
         await pause(0.5)
-        let application = AXUIElementCreateApplication(finder.processIdentifier)
         var start: CGPoint?
         for _ in 0..<20 {
             var budget = 2000

@@ -45,9 +45,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Retain the original macOS 26 Apple Silicon baseline and the macOS 15
-        # Intel baseline; preview hosts report their actual macOS 27 version.
-        os: [macos-15-intel, macos-26, xcode-27]
+        # macOS 26 ARM repeatedly fails before acquiring a hosted runner.
+        # Keep native 26 acceptance on Intel and ARM acceptance on macOS 27.
+        # Preview hosts report their actual macOS 27 version.
+        os: [macos-15-intel, macos-26-intel, xcode-27]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
