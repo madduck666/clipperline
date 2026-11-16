@@ -12,6 +12,7 @@ import XCTest
             XCTFail("The visible native fixture requires a delegate-free test host; application startup was not invoked")
             throw CocoaError(.featureUnsupported)
         }
+        pumpAppEvents()
         let previous = NSApp.activationPolicy()
         XCTAssertTrue(NSApp.setActivationPolicy(.regular))
         // XCTest does not enter NSApplication.run(), so complete the AppKit
@@ -19,17 +20,28 @@ import XCTest
         if !Self.launchedApplication { NSApp.finishLaunching(); Self.launchedApplication = true }
         return previous
     }
+    private func restoreTestHost(_ policy: NSApplication.ActivationPolicy) {
+        // Complete the preceding window close before changing activation, and
+        // finish deactivation before another fixture activates a new window.
+        pumpAppEvents()
+        _ = NSApp.setActivationPolicy(policy)
+        if policy == .prohibited { NSApp.deactivate(); wait { !NSApp.isActive } }
+        else { pumpAppEvents() }
+    }
+    private func pumpAppEvents() {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.005))
+        for _ in 0..<100 {
+            guard let event = NSApp.nextEvent(matching: .any, until: .distantPast, inMode: .default, dequeue: true) else { break }
+            NSApp.sendEvent(event)
+        }
+    }
     private func wait(file: StaticString = #filePath, line: UInt = #line, _ predicate: () -> Bool) {
         let deadline = Date().addingTimeInterval(6)
-        while !predicate() && Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.005))
+        repeat {
             // Running the Foundation loop alone does not dispatch queued
             // AppKit activation/field-editor events as NSApplication.run does.
-            for _ in 0..<100 {
-                guard let event = NSApp.nextEvent(matching: .any, until: .distantPast, inMode: .default, dequeue: true) else { break }
-                NSApp.sendEvent(event)
-            }
-        }
+            pumpAppEvents()
+        } while !predicate() && Date() < deadline
         XCTAssertTrue(predicate(), "AppKit active=\(NSApp.isActive), keyWindow=\(NSApp.keyWindow != nil), policy=\(NSApp.activationPolicy().rawValue)", file: file, line: line)
     }
     private func library(_ fixture: SyntheticFixture, count: Int = 12) throws -> LibraryStore {
@@ -204,35 +216,44 @@ import XCTest
         }
     }
 
+    private func presentKeyboardFixture(_ controller: LibraryWindowController) throws -> NSWindow {
+        let window = try XCTUnwrap(controller.window), model = controller.model
+        controller.present()
+        wait {
+            // A command-line test host has no user activation event. Establish
+            // its initial window before testing any subsequent focus command.
+            if !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
+            if !window.isKeyWindow { window.makeKeyAndOrderFront(nil) }
+            window.contentView?.layoutSubtreeIfNeeded()
+            return NSApp.isActive && window.isVisible && window.isKeyWindow && !model.loading && !model.ids.isEmpty
+        }
+        XCTAssertTrue(model.focusContent())
+        wait { !model.contentFocusPending && window.firstResponder is NSCollectionView }
+        return window
+    }
+
     func testExplicitSearchOrSidebarEntrySupersedesPendingResultFocus() throws {
-        // swift test is a command-line host. Opt this visible-window fixture
-        // into normal activation so AppKit can establish a real key editor.
         let activationPolicy = try activateTestHost()
-        defer { _ = NSApp.setActivationPolicy(activationPolicy) }
+        defer { restoreTestHost(activationPolicy) }
+        let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
+        let store = try library(fixture, count: 1)
+        let controller = LibraryWindowController(store: store,
+            line: Line(defaults: fixture.defaults, inbox: fixture.inbox, breeze: false, library: store))
+        let model = controller.model, window = try presentKeyboardFixture(controller)
+        let search = controller.toolbarController.searchField
+        defer {
+            window.endEditing(for: nil); window.makeFirstResponder(nil)
+            controller.close(); window.contentViewController = nil
+        }
+        // Keep one presented window across commands, as in normal use. Closing
+        // and immediately reopening three windows mixes old deactivation and
+        // toolbar teardown events into the next case's field-editor lifecycle.
         for destination in ["command-search", "pane-search", "pane-sidebar"] {
-            let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
-            let store = try library(fixture, count: 1)
-            let controller = LibraryWindowController(store: store,
-                line: Line(defaults: fixture.defaults, inbox: fixture.inbox, breeze: false, library: store))
-            let model = controller.model
-            let window = try XCTUnwrap(controller.window), search = controller.toolbarController.searchField
-            defer {
-                window.endEditing(for: nil); window.makeFirstResponder(nil)
-                controller.close(); window.contentViewController = nil
-            }
-            // Exercise toolbar search through normal window presentation;
-            // a hidden window has a different field-editor lifecycle.
-            // The later query completion must preserve the new editor focus.
-            controller.present()
-            wait {
-                window.contentView?.layoutSubtreeIfNeeded()
-                // Presentation/activation is asynchronous. A visible window
-                // can have a programmatic first responder before it becomes
-                // key; that later transition replaces its field editor.
-                return window.isVisible && window.isKeyWindow && !model.loading &&
-                    !model.contentFocusPending && model.ids.count == 1 && window.firstResponder is NSCollectionView
-            }
-            model.onSearchFocus?(); XCTAssertTrue(isEditing(search, in: window))
+            model.search = ""
+            XCTAssertTrue(model.focusContent())
+            wait { !model.loading && !model.contentFocusPending && model.ids.count == 1 && window.firstResponder is NSCollectionView }
+            model.onSearchFocus?()
+            wait { isEditing(search, in: window) }
             model.search = "Keyboard fixture"
             XCTAssertTrue(model.focusContent()); XCTAssertTrue(model.loading); XCTAssertTrue(model.contentFocusPending)
             switch destination {
@@ -245,29 +266,27 @@ import XCTest
             else { XCTAssertTrue(isEditing(search, in: window)) }
             wait { !model.loading }
             if destination == "pane-sidebar" { XCTAssertTrue(controller.splitController.isSidebarFocused) }
-            else { XCTAssertTrue(isEditing(search, in: window), "The query completion must preserve the newer editor focus; destination=\(destination), key=\(window.isKeyWindow), responder=\(String(describing: window.firstResponder.map { type(of: $0) }))") }
+            else { XCTAssertTrue(isEditing(search, in: window), "The query completion must preserve the newer editor focus; destination=\(destination), active=\(NSApp.isActive), key=\(window.isKeyWindow), responder=\(String(describing: window.firstResponder.map { type(of: $0) }))") }
         }
     }
 
     func testExplicitSearchOrSidebarEntrySupersedesPendingNewNoteInspectorFocus() throws {
         let activationPolicy = try activateTestHost()
-        defer { _ = NSApp.setActivationPolicy(activationPolicy) }
+        defer { restoreTestHost(activationPolicy) }
+        let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
+        let store = try library(fixture, count: 1)
+        let controller = LibraryWindowController(store: store,
+            line: Line(defaults: fixture.defaults, inbox: fixture.inbox, breeze: false, library: store))
+        let model = controller.model, window = try presentKeyboardFixture(controller)
+        let search = controller.toolbarController.searchField
+        defer {
+            window.endEditing(for: nil); window.makeFirstResponder(nil)
+            controller.close(); window.contentViewController = nil
+        }
         for destination in ["search", "sidebar"] {
-            let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
-            let store = try library(fixture, count: 1)
-            let controller = LibraryWindowController(store: store,
-                line: Line(defaults: fixture.defaults, inbox: fixture.inbox, breeze: false, library: store))
-            let model = controller.model
-            let window = try XCTUnwrap(controller.window), search = controller.toolbarController.searchField
-            defer {
-                window.endEditing(for: nil); window.makeFirstResponder(nil)
-                controller.close(); window.contentViewController = nil
-            }
-            controller.present()
-            wait {
-                window.contentView?.layoutSubtreeIfNeeded()
-                return window.isVisible && window.isKeyWindow && !model.loading && model.ids.count == 1 && window.firstResponder is NSCollectionView
-            }
+            XCTAssertTrue(model.focusContent())
+            wait { !model.loading && !model.contentFocusPending && window.firstResponder is NSCollectionView }
+            let previousCount = model.ids.count
             let original = try XCTUnwrap(model.focusedID)
             XCTAssertTrue(window.performKeyEquivalent(with: key(45, "n", [.command])))
             XCTAssertTrue(model.loading)
@@ -282,7 +301,7 @@ import XCTest
             }
             wait {
                 window.contentView?.layoutSubtreeIfNeeded()
-                return !model.loading && model.ids.count == 2
+                return !model.loading && model.ids.count == previousCount + 1
             }
             if destination == "search" {
                 XCTAssertTrue(isEditing(search, in: window), "Command-F supersedes the new note's deferred inspector entry")
