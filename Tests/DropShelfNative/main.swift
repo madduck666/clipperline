@@ -6,8 +6,8 @@ import ApplicationServices
 func L(_ key: String) -> String { key }
 
 // Some AppKit versions keep the source's mouseDragged callback inside a
-// tracking loop until mouse-up. Drive native input on another thread so its
-// release never depends on resuming a MainActor task inside that loop.
+// tracking loop until mouse-up. Drive native input from a separate process so
+// mouse-up and WindowServer queries do not share that AppKit/CGS connection.
 private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
     print("Native shelf fixture: Independent source mouse input started"); fflush(stdout)
     var point = start
@@ -206,7 +206,18 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         let start = globalPoint(window.convertPoint(toScreen: NSPoint(x: 100, y: 90)))
         let process = ProcessInfo.processInfo.processIdentifier
         lastPoint = start
-        let foundShelf = await Task.detached { driveSyntheticDrag(start: start, process: process) }.value
+        let driver = Process()
+        driver.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+        driver.arguments = ["--synthetic-driver", String(start.x), String(start.y), String(process)]
+        let foundShelf: Bool
+        do {
+            let status: Int32 = try await withCheckedThrowingContinuation { continuation in
+                driver.terminationHandler = { child in continuation.resume(returning: child.terminationStatus) }
+                do { try driver.run() }
+                catch { driver.terminationHandler = nil; continuation.resume(throwing: error) }
+            }
+            foundShelf = status == 0
+        } catch { finish("Could not launch independent native mouse driver: \(error)", success: false); return }
         print("Native shelf fixture: Independent source mouse input completed"); fflush(stdout)
         await pause(1)
         guard source.starts == 1 else { finish("Posted mouse movement did not start an AppKit drag", success: false); return }
@@ -358,6 +369,11 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         source.file = finderFixtures[finderTrial]
         await runFinder()
     }
+}
+if CommandLine.arguments.count == 5, CommandLine.arguments[1] == "--synthetic-driver",
+   let x = Double(CommandLine.arguments[2]), let y = Double(CommandLine.arguments[3]),
+   let process = Int32(CommandLine.arguments[4]) {
+    exit(driveSyntheticDrag(start: CGPoint(x: x, y: y), process: process) ? 0 : 1)
 }
 MainActor.assumeIsolated {
     let app = NSApplication.shared

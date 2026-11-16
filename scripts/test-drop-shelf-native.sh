@@ -15,14 +15,14 @@ PY
   exit 1
 fi
 python3 - "$OUT/NativeDropTest" "$@" <<'PYNATIVE'
-import os, pathlib, subprocess, sys, tempfile
+import os, pathlib, signal, subprocess, sys, tempfile
 for origin in ['temporary', 'downloads']:
     # The second launch retains the normal first-launch choice made through UI
     # in the first trial. Do not demand an onboarding modal that no longer exists.
     environment = dict(os.environ, CLIPBOARDLINE_NATIVE_FIXTURE_ROOT=origin,
                        CLIPBOARDLINE_NATIVE_EXPECT_ONBOARDING='1' if origin == 'temporary' else '0')
     print(f'Native Finder fixture origin: {origin}', flush=True)
-    process = subprocess.Popen(sys.argv[1:], env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    process = subprocess.Popen(sys.argv[1:], env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
     try:
         stdout, stderr = process.communicate(timeout=100)
         print(stdout, end='')
@@ -42,14 +42,19 @@ for origin in ['temporary', 'downloads']:
                 subprocess.run(['/usr/bin/sample', str(process.pid), '1', '1', '-file', str(sample)],
                                capture_output=True, text=True, timeout=8)
                 if sample.exists():
+                    main_thread = False
                     for line in sample.read_text(errors='replace').splitlines():
-                        if '(in ' in line and not '/' in line:
-                            frames.append(line.strip())
-                        if len(frames) == 18:
+                        if 'com.apple.main-thread' in line:
+                            main_thread = True
+                            continue
+                        if main_thread and 'Thread_' in line:
                             break
+                        if main_thread and '(in ' in line and not '/' in line:
+                            frames.append(line.strip())
+                    frames = frames[-8:]
         except (OSError, subprocess.SubprocessError):
             pass
-        process.kill()
+        os.killpg(process.pid, signal.SIGKILL)
         stdout, stderr = process.communicate()
         stages = []
         for output in [stdout, stderr]:
