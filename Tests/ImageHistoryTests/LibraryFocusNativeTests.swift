@@ -201,7 +201,10 @@ import XCTest
             controller.present()
             wait {
                 window.contentView?.layoutSubtreeIfNeeded()
-                return window.isVisible && !model.loading &&
+                // Presentation/activation is asynchronous. A visible window
+                // can have a programmatic first responder before it becomes
+                // key; that later transition replaces its field editor.
+                return window.isVisible && window.isKeyWindow && !model.loading &&
                     !model.contentFocusPending && model.ids.count == 1 && window.firstResponder is NSCollectionView
             }
             model.onSearchFocus?(); XCTAssertTrue(isEditing(search, in: window))
@@ -217,7 +220,7 @@ import XCTest
             else { XCTAssertTrue(isEditing(search, in: window)) }
             wait { !model.loading }
             if destination == "pane-sidebar" { XCTAssertTrue(controller.splitController.isSidebarFocused) }
-            else { XCTAssertTrue(isEditing(search, in: window), "The query completion must preserve the newer editor focus") }
+            else { XCTAssertTrue(isEditing(search, in: window), "The query completion must preserve the newer editor focus; destination=\(destination), key=\(window.isKeyWindow), responder=\(String(describing: window.firstResponder.map { type(of: $0) }))") }
         }
     }
 
@@ -237,7 +240,7 @@ import XCTest
             controller.present()
             wait {
                 window.contentView?.layoutSubtreeIfNeeded()
-                return window.isVisible && !model.loading && model.ids.count == 1 && window.firstResponder is NSCollectionView
+                return window.isVisible && window.isKeyWindow && !model.loading && model.ids.count == 1 && window.firstResponder is NSCollectionView
             }
             let original = try XCTUnwrap(model.focusedID)
             XCTAssertTrue(window.performKeyEquivalent(with: key(45, "n", [.command])))
