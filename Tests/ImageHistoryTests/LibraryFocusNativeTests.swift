@@ -5,10 +5,28 @@ import XCTest
 #endif
 
 @MainActor final class LibraryFocusNativeTests: HistoryTestCase {
-    private func wait(_ predicate: () -> Bool) {
+    private static var launchedApplication = false
+    private func activateTestHost() -> NSApplication.ActivationPolicy {
+        _ = NSApplication.shared
+        let previous = NSApp.activationPolicy()
+        XCTAssertTrue(NSApp.setActivationPolicy(.regular))
+        // XCTest does not enter NSApplication.run(), so complete the AppKit
+        // launch lifecycle before exercising visible/key window transitions.
+        if !Self.launchedApplication { NSApp.finishLaunching(); Self.launchedApplication = true }
+        return previous
+    }
+    private func wait(file: StaticString = #filePath, line: UInt = #line, _ predicate: () -> Bool) {
         let deadline = Date().addingTimeInterval(6)
-        while !predicate() && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.005)) }
-        XCTAssertTrue(predicate())
+        while !predicate() && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.005))
+            // Running the Foundation loop alone does not dispatch queued
+            // AppKit activation/field-editor events as NSApplication.run does.
+            for _ in 0..<100 {
+                guard let event = NSApp.nextEvent(matching: .any, until: .distantPast, inMode: .default, dequeue: true) else { break }
+                NSApp.sendEvent(event)
+            }
+        }
+        XCTAssertTrue(predicate(), "AppKit active=\(NSApp.isActive), keyWindow=\(NSApp.keyWindow != nil), policy=\(NSApp.activationPolicy().rawValue)", file: file, line: line)
     }
     private func library(_ fixture: SyntheticFixture, count: Int = 12) throws -> LibraryStore {
         let store = try LibraryStore(defaults: fixture.defaults, inbox: fixture.inbox, now: { fixture.date })
@@ -183,11 +201,9 @@ import XCTest
     }
 
     func testExplicitSearchOrSidebarEntrySupersedesPendingResultFocus() throws {
-        _ = NSApplication.shared
         // swift test is a command-line host. Opt this visible-window fixture
         // into normal activation so AppKit can establish a real key editor.
-        let activationPolicy = NSApp.activationPolicy()
-        XCTAssertTrue(NSApp.setActivationPolicy(.regular))
+        let activationPolicy = activateTestHost()
         defer { _ = NSApp.setActivationPolicy(activationPolicy) }
         for destination in ["command-search", "pane-search", "pane-sidebar"] {
             let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
@@ -230,9 +246,7 @@ import XCTest
     }
 
     func testExplicitSearchOrSidebarEntrySupersedesPendingNewNoteInspectorFocus() throws {
-        _ = NSApplication.shared
-        let activationPolicy = NSApp.activationPolicy()
-        XCTAssertTrue(NSApp.setActivationPolicy(.regular))
+        let activationPolicy = activateTestHost()
         defer { _ = NSApp.setActivationPolicy(activationPolicy) }
         for destination in ["search", "sidebar"] {
             let fixture = try SyntheticFixture(); defer { fixture.cleanup() }
