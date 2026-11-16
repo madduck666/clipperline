@@ -50,11 +50,13 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
     var starts = 0
     var completed: NSDragOperation?
     var received: [URL] = []
+    var destinationEntries = 0, destinationPreparations = 0, destinationDrops = 0
     override init(frame: NSRect) { super.init(frame: frame); registerForDraggedTypes([.fileURL]) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
-    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { destinationEntries += 1; return .copy }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { destinationPreparations += 1; return true }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        destinationDrops += 1
         received = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         return !received.isEmpty
     }
@@ -92,13 +94,15 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         guard !finished else { return }; finished = true
         post(.leftMouseUp, at: lastPoint)
         shelf.stop(); window?.orderOut(nil)
+        var result = message
         if !success, let root, let diagnostics = try? String(contentsOf: root.appendingPathComponent("host-diagnostics.json")) {
             print("::notice title=Independent shelf host::\(diagnostics)")
+            result += "; independent host counts=\(diagnostics)"
         }
         if let packagedApp, !packagedApp.isTerminated { packagedApp.terminate() }
         if let root { try? FileManager.default.removeItem(at: root) }
         if let downloadsRoot { try? FileManager.default.removeItem(at: downloadsRoot) }
-        print("::\(success ? "notice" : "error") title=Native shelf drag::\(message)")
+        print("::\(success ? "notice" : "error") title=Native shelf drag::\(result)")
         fflush(stdout)
         exit(success ? 0 : 1)
     }
@@ -271,6 +275,7 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         guard AXIsProcessTrusted() else { finish("Native AppKit source passed, but the CI desktop does not authorize Finder accessibility; Finder acceptance is unverified.", success: false); return }
         print("Native shelf fixture: Starting Finder drag"); fflush(stdout)
         shelf.dismiss(); window.orderOut(nil); source.received = []
+        source.destinationEntries = 0; source.destinationPreparations = 0; source.destinationDrops = 0
         NSWorkspace.shared.activateFileViewerSelecting([source.file])
         await pause(1.5)
         guard let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) else { finish("Finder is unavailable on the CI desktop", success: false); return }
@@ -324,7 +329,9 @@ private func driveSyntheticDrag(start: CGPoint, process: Int32) -> Bool {
         post(.mouseMoved, at: start); await pause(0.1)
         post(.leftMouseDown, at: start); await pause(0.1)
         await moveDrag(from: start, to: end)
-        guard source.received.map(\.path) == [source.file.path] else { finish("Packaged application did not return the stored Finder file through a native drag", success: false); return }
+        guard source.received.map(\.path) == [source.file.path] else {
+            finish("Packaged application did not return the stored Finder file through a native drag; receiver entries=\(source.destinationEntries), prepare=\(source.destinationPreparations), drops=\(source.destinationDrops), received=\(source.received.count)", success: false); return
+        }
         guard originalPreserved() else { finish("Packaged application changed the original", success: false); return }
         await nextFinderTrial("Packaged app: real Finder drop accepted, native drag-out accepted by another process, original preserved")
     }

@@ -267,7 +267,10 @@ The native matrix uses the explicit macOS 15/26 Intel pools and the `xcode-27`
 Apple Silicon preview pool. GitHub's published image inventory identifies the
 latter as macOS 27.0.1 (26A434), but observed runs already report macOS 27.2.
 The fixture prints the actual running OS rather than inferring it from the
-runner label. The full XCTest, community build and packaged Finder/Downloads
-acceptance also run there. This preview pool is not pinned to 27.0.1; a
+runner label. Full XCTest and the shared behavior reports retain the macOS 15
+baseline. macOS 27 runs the destination regression XTests, community build and
+packaged Finder/Downloads acceptance after that complete baseline passes. This
+keeps the existing native Vision OCR integration on its established OS while
+exercising the affected drop behavior on the new OS. This preview pool is not pinned to 27.0.1; a
 successful run on that exact version remains necessary to confirm the reported
 failure is resolved.

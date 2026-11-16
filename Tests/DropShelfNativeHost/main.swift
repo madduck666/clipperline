@@ -12,7 +12,7 @@ func L(_ key: String) -> String { key }
                 self.polls += 1
                 if NSEvent.pressedMouseButtons & 1 != 0 { self.mouseDownPolls += 1 }
                 let board = NSPasteboard(name: .drag)
-                if board.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) { self.fileDragPolls += 1 }
+                if board.types?.contains(.fileURL) == true { self.fileDragPolls += 1 }
                 let values: [String: Int] = ["polls": self.polls, "mouseDownPolls": self.mouseDownPolls, "fileDragPolls": self.fileDragPolls, "stored": self.shelf.model.files.count]
                 if let data = try? JSONSerialization.data(withJSONObject: values) { try? data.write(to: URL(fileURLWithPath: CommandLine.arguments[1]), options: .atomic) }
             }

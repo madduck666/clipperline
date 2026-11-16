@@ -129,6 +129,7 @@ import XCTest
     }
 
     func testAdvertisedFileTypeCanHoverBeforeFileDataIsAvailable() {
+        _ = NSApplication.shared
         let board = NSPasteboard(name: .init("drop-shelf-delayed-\(UUID().uuidString)"))
         defer { board.releaseGlobally() }
         // An advertised type is sufficient for negotiation. Missing/invalid
@@ -146,6 +147,7 @@ import XCTest
     }
 
     func testDeferredFinderFileIsReadOnlyWhenDropped() throws {
+        _ = NSApplication.shared
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
         try Data("original".utf8).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
